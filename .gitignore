@@ -1,0 +1,106 @@
+# ========================
+# Python / Django
+# ========================
+
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Virtual environments
+venv/
+env/
+.env/
+.venv/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+
+# Migrations (optional — remove if you want to track them)
+# */migrations/
+
+# Static files collected by collectstatic
+staticfiles/
+static_root/
+
+# Django secret / env vars
+.env
+.env.*
+!.env.example
+
+# ========================
+# Frontend
+# ========================
+
+# Build output
+dist/
+build/
+out/
+
+# Node modules
+node_modules/
+
+# Cache
+.cache/
+.parcel-cache/
+.vite/
+.next/
+.nuxt/
+
+# Env files
+# .env already covered above
+
+# ========================
+# Editor & OS
+# ========================
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+
+# JetBrains (PyCharm, WebStorm)
+.idea/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# ========================
+# Misc
+# ========================
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Pytest
+.pytest_cache/
+.tox/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Uploads (user-generated content — keep folder, ignore contents)
+uploads/*
+!uploads/.gitkeep
