@@ -127,7 +127,7 @@ function CustomizeModal({ onClose, onAdd }) {
   })
 
   const customTypeIds  = new Set(customTypes.map(t => t.id))
-  const itemsByType    = (typeId) => allItems.filter(i => i.food_type === typeId && i.is_available)
+  const itemsByType    = (typeId) => allItems.filter(i => i.food_type === typeId && i.is_active)
 
   // Addons: union of all addons from types that allow_addons, deduplicated by id
   const availableAddons = (() => {
@@ -213,24 +213,31 @@ function CustomizeModal({ onClose, onAdd }) {
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 ml-0">
                     {typeItems.map(item => {
-                      const isSel = selItem?.id === item.id
+                      const isSel      = selItem?.id === item.id
+                      const outOfStock = !item.is_available || item.makeable_count <= 0
                       return (
                         <div
                           key={item.id}
-                          onClick={() => toggleItem(type.id, item)}
-                          className={`p-3 rounded-xl border-2 cursor-pointer transition-all select-none
-                            ${isSel
-                              ? 'border-primary-400 bg-primary-50'
-                              : 'border-gray-100 hover:border-gray-200 bg-white'}`}
+                          onClick={() => !outOfStock && toggleItem(type.id, item)}
+                          className={`relative p-3 rounded-xl border-2 transition-all select-none
+                            ${outOfStock
+                              ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
+                              : isSel
+                                ? 'border-primary-400 bg-primary-50 cursor-pointer'
+                                : 'border-gray-100 hover:border-gray-200 bg-white cursor-pointer'}`}
                         >
                           <div className="flex items-start justify-between gap-1">
-                            <p className="text-sm font-medium text-gray-800 line-clamp-2 flex-1">{item.name}</p>
-                            <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center
-                              ${isSel ? 'border-primary-500 bg-primary-500' : 'border-gray-300'}`}>
-                              {isSel && <Check size={9} className="text-white" />}
-                            </div>
+                            <p className={`text-sm font-medium line-clamp-2 flex-1 ${outOfStock ? 'text-gray-400' : 'text-gray-800'}`}>{item.name}</p>
+                            {outOfStock ? (
+                              <span className="text-xs text-red-400 font-semibold flex-shrink-0">Out</span>
+                            ) : (
+                              <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center
+                                ${isSel ? 'border-primary-500 bg-primary-500' : 'border-gray-300'}`}>
+                                {isSel && <Check size={9} className="text-white" />}
+                              </div>
+                            )}
                           </div>
-                          <p className="text-xs font-bold text-primary-500 mt-1">₹{parseFloat(item.price).toFixed(2)}</p>
+                          <p className={`text-xs font-bold mt-1 ${outOfStock ? 'text-gray-400' : 'text-primary-500'}`}>₹{parseFloat(item.price).toFixed(2)}</p>
                         </div>
                       )
                     })}
