@@ -11,7 +11,7 @@ class ShiftAdmin(admin.ModelAdmin):
 
 @admin.register(Employee)
 class EmployeeAdmin(admin.ModelAdmin):
-    list_display  = ['name', 'department', 'shift', 'employment_type', 'hourly_rate', 'is_active']
+    list_display  = ['name', 'department', 'shift', 'employment_type', 'monthly_salary', 'is_active']
     list_filter   = ['department', 'employment_type', 'is_active']
     search_fields = ['name', 'phone', 'email']
 

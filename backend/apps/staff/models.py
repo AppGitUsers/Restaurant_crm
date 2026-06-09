@@ -55,7 +55,7 @@ class Employee(models.Model):
                                          null=True, blank=True, related_name='employees')
     employment_type = models.CharField(max_length=15, choices=EmploymentType.choices,
                                         default=EmploymentType.FULL_TIME)
-    hourly_rate     = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    monthly_salary  = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     address         = models.TextField(blank=True)
     joined_date     = models.DateField()
     photo           = models.ImageField(upload_to='staff/photos/', blank=True, null=True)

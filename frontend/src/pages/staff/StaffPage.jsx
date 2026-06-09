@@ -5,7 +5,8 @@ import { PageLoader, Modal, SearchBar, StatusBadge, ConfirmDialog, Field, Empty 
 import toast from 'react-hot-toast'
 import {
   Plus, Edit2, Trash2, Calendar, CreditCard, Users,
-  Clock, Building2, KeyRound, Shield,
+  Clock, Building2, KeyRound, ChevronLeft, ChevronRight,
+  AlertCircle, Zap, Check, X,
 } from 'lucide-react'
 import { format, getDaysInMonth, startOfMonth } from 'date-fns'
 
@@ -19,71 +20,322 @@ const ALL_DAYS = [
   { code: 'SUN', label: 'Sun' },
 ]
 
-// ── Attendance Calendar ───────────────────────────────
-function AttendanceCalendarModal({ employee, onClose }) {
-  const today    = new Date()
+// ── Attendance full-page calendar ─────────────────────
+function AttendanceCalendar({ employee, onBack }) {
+  const qc     = useQueryClient()
+  const today  = new Date()
   const [year, setYear]   = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth() + 1)
+  const [editDay, setEditDay] = useState(null)   // { date, att | null }
+  const [editForm, setEditForm] = useState({})
 
   const { data, isLoading } = useQuery({
     queryKey: ['att-cal', employee?.id, year, month],
     queryFn:  () => staffAPI.employees.attendanceCalendar(employee.id, { year, month }).then(r => r.data),
-    enabled: !!employee,
+    enabled:  !!employee,
   })
 
-  const attMap = {}
-  ;(data || []).forEach(a => { attMap[a.date] = a })
+  const records = data || []
+  const attMap  = {}
+  records.forEach(a => { attMap[a.date] = a })
 
-  const days  = getDaysInMonth(new Date(year, month - 1))
-  const start = startOfMonth(new Date(year, month - 1)).getDay()
-  const colorMap = {
-    PRESENT: 'bg-primary-400 text-white',
-    ABSENT:  'bg-red-400 text-white',
-    HALF:    'bg-gold-300 text-white',
-    LEAVE:   'bg-gray-300 text-white',
+  const days      = getDaysInMonth(new Date(year, month - 1))
+  const startDay  = startOfMonth(new Date(year, month - 1)).getDay()   // 0=Sun
+
+  // Stats
+  const presentDays = records.filter(r => r.status === 'PRESENT').length
+  const absentDays  = records.filter(r => r.status === 'ABSENT').length
+  const halfDays    = records.filter(r => r.status === 'HALF').length
+  const lateDays    = records.filter(r => r.is_late).length
+  const otDays      = records.filter(r => r.ot_minutes > 0).length
+  const totalHours  = records.reduce((s, r) => s + parseFloat(r.hours_worked || 0), 0)
+
+  const prevMonth = () => {
+    if (month === 1) { setYear(y => y - 1); setMonth(12) }
+    else setMonth(m => m - 1)
+  }
+  const nextMonth = () => {
+    if (month === 12) { setYear(y => y + 1); setMonth(1) }
+    else setMonth(m => m + 1)
   }
 
+  const openEdit = (day) => {
+    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+    const att     = attMap[dateStr]
+    setEditDay({ date: dateStr, att })
+    setEditForm(att ? {
+      status:    att.status,
+      check_in:  att.check_in  || '',
+      check_out: att.check_out || '',
+      notes:     att.notes     || '',
+    } : {
+      status: 'PRESENT', check_in: '', check_out: '', notes: '',
+    })
+  }
+
+  const saveAtt = useMutation({
+    mutationFn: async (form) => {
+      const att = editDay?.att
+      const payload = {
+        employee:  employee.id,
+        date:      editDay.date,
+        status:    form.status,
+        check_in:  form.check_in  || null,
+        check_out: form.check_out || null,
+        notes:     form.notes,
+      }
+      if (att) return staffAPI.attendance.update(att.id, payload)
+      return staffAPI.attendance.create(payload)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries(['att-cal', employee.id, year, month])
+      qc.invalidateQueries(['att-by-date'])
+      setEditDay(null)
+      toast.success('Attendance saved')
+    },
+    onError: e => toast.error(e?.response?.data?.non_field_errors?.[0] || 'Save failed'),
+  })
+
+  const deleteAtt = useMutation({
+    mutationFn: (id) => staffAPI.attendance.update(id, { status: 'ABSENT', check_in: null, check_out: null }),
+    onSuccess: () => {
+      qc.invalidateQueries(['att-cal', employee.id, year, month])
+      setEditDay(null)
+      toast.success('Marked absent')
+    },
+  })
+
+  const statusBg = {
+    PRESENT: 'bg-primary-500',
+    ABSENT:  'bg-red-400',
+    HALF:    'bg-amber-400',
+    LEAVE:   'bg-gray-400',
+  }
+  const statusText = { PRESENT: 'P', ABSENT: 'A', HALF: 'H', LEAVE: 'L' }
+
+  const needsTimes = (s) => s === 'PRESENT' || s === 'HALF'
+
   return (
-    <Modal open={!!employee} onClose={onClose} title={`Attendance Calendar — ${employee?.name}`} size="lg">
-      <div className="flex items-center gap-3 mb-4">
-        <select className="select w-32" value={month} onChange={e => setMonth(+e.target.value)}>
-          {Array.from({ length: 12 }, (_, i) => (
-            <option key={i + 1} value={i + 1}>{format(new Date(year, i), 'MMMM')}</option>
-          ))}
-        </select>
-        <select className="select w-24" value={year} onChange={e => setYear(+e.target.value)}>
-          {[2023, 2024, 2025, 2026].map(y => <option key={y}>{y}</option>)}
-        </select>
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <button onClick={onBack} className="btn-ghost py-1.5 px-3 text-sm flex items-center gap-1">
+          <ChevronLeft size={16} />Back
+        </button>
+        <div className="flex items-center gap-2">
+          <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+            {employee.photo_url
+              ? <img src={employee.photo_url} alt={employee.name} className="w-full h-full object-cover" />
+              : <Users size={18} className="text-primary-400" />
+            }
+          </div>
+          <div>
+            <h2 className="font-bold text-gray-800 text-base">{employee.name}</h2>
+            <p className="text-xs text-gray-400">{employee.shift_name || 'No shift'} • {employee.employment_type.replace('_',' ')}</p>
+          </div>
+        </div>
+
+        {/* Month navigator */}
+        <div className="flex items-center gap-2 ml-auto">
+          <button onClick={prevMonth} className="btn-ghost p-1.5"><ChevronLeft size={16} /></button>
+          <span className="font-semibold text-gray-700 w-32 text-center text-sm">
+            {format(new Date(year, month - 1), 'MMMM yyyy')}
+          </span>
+          <button onClick={nextMonth} className="btn-ghost p-1.5"><ChevronRight size={16} /></button>
+        </div>
       </div>
-      <div className="grid grid-cols-7 gap-1 mb-2">
-        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
-          <div key={d} className="text-center text-xs font-semibold text-gray-400 py-1">{d}</div>
-        ))}
-      </div>
-      <div className="grid grid-cols-7 gap-1">
-        {Array.from({ length: start }).map((_, i) => <div key={`empty-${i}`} />)}
-        {Array.from({ length: days }, (_, i) => {
-          const day  = i + 1
-          const date = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
-          const att  = attMap[date]
-          return (
-            <div key={day} className={`rounded-lg p-1.5 text-center text-xs font-medium transition-colors
-              ${att ? colorMap[att.status] : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
-              <div>{day}</div>
-              {att && <div className="text-[9px] mt-0.5 opacity-90">{att.status.slice(0,3)}</div>}
-            </div>
-          )
-        })}
-      </div>
-      <div className="flex gap-3 mt-4 text-xs">
-        {Object.entries(colorMap).map(([k, cls]) => (
-          <div key={k} className="flex items-center gap-1">
-            <span className={`w-3 h-3 rounded-sm ${cls}`} />
-            <span className="text-gray-500">{k}</span>
+
+      {/* Stats strip */}
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
+        {[
+          { label: 'Total Hours',   value: `${totalHours.toFixed(1)}h`, color: 'text-primary-600', bg: 'bg-primary-50' },
+          { label: 'Present',       value: presentDays,                  color: 'text-green-600',   bg: 'bg-green-50' },
+          { label: 'Absent',        value: absentDays,                   color: 'text-red-600',     bg: 'bg-red-50' },
+          { label: 'Half Day',      value: halfDays,                     color: 'text-amber-600',   bg: 'bg-amber-50' },
+          { label: 'Late',          value: lateDays,                     color: 'text-orange-600',  bg: 'bg-orange-50' },
+          { label: 'Overtime',      value: otDays,                       color: 'text-purple-600',  bg: 'bg-purple-50' },
+        ].map(s => (
+          <div key={s.label} className={`${s.bg} rounded-xl px-3 py-2 text-center`}>
+            <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
           </div>
         ))}
       </div>
-    </Modal>
+
+      {/* Calendar */}
+      {isLoading ? <PageLoader /> : (
+        <div className="flex-1 overflow-auto">
+          {/* Day headers */}
+          <div className="grid grid-cols-7 gap-1 mb-1">
+            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+              <div key={d} className="text-center text-xs font-semibold text-gray-400 py-1">{d}</div>
+            ))}
+          </div>
+
+          {/* Day cells */}
+          <div className="grid grid-cols-7 gap-1">
+            {/* Leading empty cells */}
+            {Array.from({ length: startDay }).map((_, i) => (
+              <div key={`empty-${i}`} className="rounded-xl min-h-[80px]" />
+            ))}
+
+            {Array.from({ length: days }, (_, i) => {
+              const day     = i + 1
+              const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+              const att     = attMap[dateStr]
+              const isToday = dateStr === today.toISOString().split('T')[0]
+
+              return (
+                <div
+                  key={day}
+                  onClick={() => openEdit(day)}
+                  className={`rounded-xl min-h-[80px] p-2 cursor-pointer border transition-all hover:shadow-md select-none
+                    ${att ? `${statusBg[att.status]} text-white border-transparent` : 'bg-gray-50 border-gray-100 hover:border-primary-200'}
+                    ${isToday && !att ? 'border-primary-300 ring-1 ring-primary-200' : ''}`}
+                >
+                  {/* Day number */}
+                  <div className={`flex items-center justify-between mb-1`}>
+                    <span className={`text-sm font-bold ${att ? 'text-white' : isToday ? 'text-primary-600' : 'text-gray-700'}`}>
+                      {day}
+                    </span>
+                    {att && (
+                      <span className="text-[10px] font-bold bg-white/20 px-1 rounded">
+                        {statusText[att.status]}
+                      </span>
+                    )}
+                  </div>
+
+                  {att && att.status === 'PRESENT' || att?.status === 'HALF' ? (
+                    <div className="space-y-0.5">
+                      {att.check_in && (
+                        <p className="text-[10px] text-white/90 leading-tight">
+                          In: {att.check_in.slice(0,5)}
+                        </p>
+                      )}
+                      {att.check_out && (
+                        <p className="text-[10px] text-white/90 leading-tight">
+                          Out: {att.check_out.slice(0,5)}
+                        </p>
+                      )}
+                      {parseFloat(att.hours_worked) > 0 && (
+                        <p className="text-[10px] font-semibold text-white/90 leading-tight">
+                          {parseFloat(att.hours_worked).toFixed(1)}h
+                        </p>
+                      )}
+                      <div className="flex flex-wrap gap-0.5 mt-1">
+                        {att.is_late && (
+                          <span className="text-[9px] bg-orange-500 text-white px-1 py-0.5 rounded font-bold">LATE</span>
+                        )}
+                        {att.ot_minutes > 0 && (
+                          <span className="text-[9px] bg-purple-600 text-white px-1 py-0.5 rounded font-bold">
+                            OT+{att.ot_minutes}m
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : !att ? (
+                    <p className="text-[10px] text-gray-300 mt-1">click to mark</p>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Legend */}
+          <div className="flex flex-wrap gap-3 mt-4 text-xs">
+            {[
+              { label: 'Present',  bg: 'bg-primary-500' },
+              { label: 'Absent',   bg: 'bg-red-400' },
+              { label: 'Half Day', bg: 'bg-amber-400' },
+              { label: 'Leave',    bg: 'bg-gray-400' },
+              { label: 'Late',     bg: 'bg-orange-500' },
+              { label: 'OT',       bg: 'bg-purple-600' },
+            ].map(l => (
+              <div key={l.label} className="flex items-center gap-1.5">
+                <span className={`w-3 h-3 rounded-sm ${l.bg}`} />
+                <span className="text-gray-500">{l.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Edit modal */}
+      {editDay && (
+        <Modal
+          open={!!editDay}
+          onClose={() => setEditDay(null)}
+          title={`Attendance — ${editDay.date}`}
+          size="sm"
+          footer={
+            <div className="flex justify-between w-full">
+              <button onClick={() => setEditDay(null)} className="btn-ghost">Cancel</button>
+              <button
+                onClick={() => saveAtt.mutate(editForm)}
+                disabled={saveAtt.isPending}
+                className="btn-primary"
+              >
+                <Check size={14} />Save
+              </button>
+            </div>
+          }
+        >
+          <div className="space-y-3">
+            <Field label="Status">
+              <div className="grid grid-cols-2 gap-2">
+                {['PRESENT','ABSENT','HALF','LEAVE'].map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setEditForm(f => ({ ...f, status: s }))}
+                    className={`py-2 rounded-lg text-sm font-medium border-2 transition-colors
+                      ${editForm.status === s
+                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                        : 'border-gray-100 bg-white text-gray-500 hover:border-gray-200'}`}
+                  >
+                    {s === 'PRESENT' ? '✓ Present' : s === 'ABSENT' ? '✗ Absent' : s === 'HALF' ? '½ Half Day' : '🏖 Leave'}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            {needsTimes(editForm.status) && (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Check In">
+                  <input type="time" className="input" value={editForm.check_in}
+                    onChange={e => setEditForm(f => ({ ...f, check_in: e.target.value }))} />
+                </Field>
+                <Field label="Check Out">
+                  <input type="time" className="input" value={editForm.check_out}
+                    onChange={e => setEditForm(f => ({ ...f, check_out: e.target.value }))} />
+                </Field>
+              </div>
+            )}
+
+            <Field label="Notes">
+              <input className="input" placeholder="Optional notes…" value={editForm.notes}
+                onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} />
+            </Field>
+
+            {/* Computed preview */}
+            {editForm.check_in && editForm.check_out && (
+              <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500 flex gap-4">
+                <span>
+                  Hours: <strong className="text-gray-700">
+                    {(() => {
+                      const ci = editForm.check_in.split(':').map(Number)
+                      const co = editForm.check_out.split(':').map(Number)
+                      const mins = (co[0]*60+co[1]) - (ci[0]*60+ci[1])
+                      return mins > 0 ? `${(mins/60).toFixed(1)}h` : '—'
+                    })()}
+                  </strong>
+                </span>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+    </div>
   )
 }
 
@@ -135,10 +387,6 @@ function ShiftTab() {
     }))
   }
 
-  const handleSubmit = () => {
-    save.mutate({ ...form, days: form.days.join(',') })
-  }
-
   const shifts = data || []
 
   return (
@@ -150,14 +398,8 @@ function ShiftTab() {
         <table className="table">
           <thead>
             <tr>
-              <th>Shift Name</th>
-              <th>Time</th>
-              <th>Hours</th>
-              <th>Days</th>
-              <th>Late After</th>
-              <th>OT After</th>
-              <th>Status</th>
-              <th>Actions</th>
+              <th>Shift Name</th><th>Time</th><th>Hours</th><th>Days</th>
+              <th>Late After</th><th>OT After</th><th>Status</th><th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -165,9 +407,7 @@ function ShiftTab() {
             {shifts.map(s => (
               <tr key={s.id}>
                 <td className="font-semibold">{s.name}</td>
-                <td className="font-mono text-sm">
-                  {s.start_time} – {s.end_time}
-                </td>
+                <td className="font-mono text-sm">{s.start_time} – {s.end_time}</td>
                 <td>{s.hours}h</td>
                 <td>
                   <div className="flex flex-wrap gap-0.5">
@@ -178,11 +418,7 @@ function ShiftTab() {
                 </td>
                 <td className="text-sm text-gray-500">{s.late_threshold} min</td>
                 <td className="text-sm text-gray-500">{s.ot_threshold} min</td>
-                <td>
-                  <span className={s.is_active ? 'badge-green' : 'badge-gray'}>
-                    {s.is_active ? 'Active' : 'Inactive'}
-                  </span>
-                </td>
+                <td><span className={s.is_active ? 'badge-green' : 'badge-gray'}>{s.is_active ? 'Active' : 'Inactive'}</span></td>
                 <td>
                   <div className="flex gap-1">
                     <button onClick={() => openEdit(s)} className="btn-ghost py-1"><Edit2 size={13} /></button>
@@ -199,12 +435,7 @@ function ShiftTab() {
       </div>
 
       <Modal open={modal} onClose={() => setModal(false)} title={sel ? 'Edit Shift' : 'Add Shift'} size="lg"
-        footer={
-          <>
-            <button onClick={() => setModal(false)} className="btn-ghost">Cancel</button>
-            <button onClick={handleSubmit} disabled={save.isPending} className="btn-primary">Save</button>
-          </>
-        }>
+        footer={<><button onClick={() => setModal(false)} className="btn-ghost">Cancel</button><button onClick={() => save.mutate({ ...form, days: form.days.join(',') })} disabled={save.isPending} className="btn-primary">Save</button></>}>
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <Field label="Shift Name" required>
@@ -212,65 +443,42 @@ function ShiftTab() {
             </Field>
           </div>
           <Field label="Start Time" required>
-            <input type="time" className="input" value={form.start_time}
-              onChange={e => setForm({ ...form, start_time: e.target.value })} />
+            <input type="time" className="input" value={form.start_time} onChange={e => setForm({ ...form, start_time: e.target.value })} />
           </Field>
           <Field label="End Time" required>
-            <input type="time" className="input" value={form.end_time}
-              onChange={e => setForm({ ...form, end_time: e.target.value })} />
+            <input type="time" className="input" value={form.end_time} onChange={e => setForm({ ...form, end_time: e.target.value })} />
           </Field>
           <Field label="Late Threshold (minutes)">
-            <input type="number" min="0" className="input" value={form.late_threshold}
-              onChange={e => setForm({ ...form, late_threshold: e.target.value })} />
+            <input type="number" min="0" className="input" value={form.late_threshold} onChange={e => setForm({ ...form, late_threshold: e.target.value })} />
           </Field>
           <Field label="OT Threshold (minutes)">
-            <input type="number" min="0" className="input" value={form.ot_threshold}
-              onChange={e => setForm({ ...form, ot_threshold: e.target.value })} />
+            <input type="number" min="0" className="input" value={form.ot_threshold} onChange={e => setForm({ ...form, ot_threshold: e.target.value })} />
           </Field>
         </div>
-
         <div className="mt-3">
           <div className="flex items-center justify-between mb-2">
             <label className="label">Working Days</label>
             <div className="flex gap-2 text-xs">
-              <button type="button" className="text-primary-500 hover:underline"
-                onClick={() => setForm(f => ({ ...f, days: ALL_DAYS.map(d => d.code) }))}>
-                All Days
-              </button>
-              <button type="button" className="text-primary-500 hover:underline"
-                onClick={() => setForm(f => ({ ...f, days: ['MON','TUE','WED','THU','FRI'] }))}>
-                Weekdays
-              </button>
-              <button type="button" className="text-gray-400 hover:underline"
-                onClick={() => setForm(f => ({ ...f, days: [] }))}>
-                Clear
-              </button>
+              <button type="button" className="text-primary-500 hover:underline" onClick={() => setForm(f => ({ ...f, days: ALL_DAYS.map(d => d.code) }))}>All Days</button>
+              <button type="button" className="text-primary-500 hover:underline" onClick={() => setForm(f => ({ ...f, days: ['MON','TUE','WED','THU','FRI'] }))}>Weekdays</button>
+              <button type="button" className="text-gray-400 hover:underline" onClick={() => setForm(f => ({ ...f, days: [] }))}>Clear</button>
             </div>
           </div>
           <div className="flex gap-2 flex-wrap">
             {ALL_DAYS.map(d => (
-              <button key={d.code} type="button"
-                onClick={() => toggleDay(d.code)}
+              <button key={d.code} type="button" onClick={() => toggleDay(d.code)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors
-                  ${form.days.includes(d.code)
-                    ? 'bg-primary-500 text-white border-primary-500'
-                    : 'bg-white text-gray-500 border-gray-200 hover:border-primary-300'}`}>
+                  ${form.days.includes(d.code) ? 'bg-primary-500 text-white border-primary-500' : 'bg-white text-gray-500 border-gray-200 hover:border-primary-300'}`}>
                 {d.label}
               </button>
             ))}
           </div>
         </div>
-
         <div className="mt-3">
-          <Field label="Notes">
-            <textarea className="input" rows={2} value={form.notes}
-              onChange={e => setForm({ ...form, notes: e.target.value })} />
-          </Field>
+          <Field label="Notes"><textarea className="input" rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></Field>
         </div>
-
         <div className="mt-3 flex items-center gap-2">
-          <input type="checkbox" id="shift-active" checked={form.is_active}
-            onChange={e => setForm({ ...form, is_active: e.target.checked })} className="w-4 h-4 accent-primary-500" />
+          <input type="checkbox" id="shift-active" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="w-4 h-4 accent-primary-500" />
           <label htmlFor="shift-active" className="text-sm text-gray-600">Active</label>
         </div>
       </Modal>
@@ -282,26 +490,46 @@ function ShiftTab() {
 }
 
 // ── Employee Tab ──────────────────────────────────────
-function EmployeeTab() {
+function EmployeeTab({ onOpenCalendar }) {
   const qc = useQueryClient()
-  const [search, setSearch]   = useState('')
-  const [modal, setModal]     = useState(false)
-  const [sel, setSel]         = useState(null)
-  const [del, setDel]         = useState(null)
-  const [calEmp, setCalEmp]   = useState(null)
-  const [form, setForm]       = useState({ name: '', phone: '', email: '', department: '', shift: '', employment_type: 'FULL_TIME', hourly_rate: '', joined_date: '', address: '' })
-  const [photo, setPhoto]     = useState(null)
+  const [search, setSearch] = useState('')
+  const [modal, setModal]   = useState(false)
+  const [sel, setSel]       = useState(null)
+  const [del, setDel]       = useState(null)
+  const [form, setForm]     = useState({ name: '', phone: '', email: '', department: '', shift: '', employment_type: 'FULL_TIME', monthly_salary: '', joined_date: '', address: '' })
+  const [photo, setPhoto]   = useState(null)
 
   const { data, isLoading } = useQuery({ queryKey: ['employees', search], queryFn: () => staffAPI.employees.list({ search }).then(r => r.data.results || r.data) })
   const { data: depts }     = useQuery({ queryKey: ['departments'], queryFn: () => staffAPI.departments.list().then(r => r.data.results || r.data) })
   const { data: shifts }    = useQuery({ queryKey: ['shifts'], queryFn: () => staffAPI.shifts.list().then(r => r.data.results || r.data) })
 
-  const save   = useMutation({ mutationFn: async d => { const fd = new FormData(); Object.entries(d).forEach(([k,v]) => v !== '' && fd.append(k,v)); if (photo) fd.append('photo', photo); return sel ? staffAPI.employees.update(sel.id, fd) : staffAPI.employees.create(fd) }, onSuccess: () => { qc.invalidateQueries(['employees']); setModal(false); toast.success('Saved!') } })
-  const remove = useMutation({ mutationFn: id => staffAPI.employees.delete(id), onSuccess: () => { qc.invalidateQueries(['employees']); setDel(null); toast.success('Deleted') } })
+  const save   = useMutation({
+    mutationFn: async d => {
+      const fd = new FormData()
+      Object.entries(d).forEach(([k, v]) => v !== '' && fd.append(k, v))
+      if (photo) fd.append('photo', photo)
+      return sel ? staffAPI.employees.update(sel.id, fd) : staffAPI.employees.create(fd)
+    },
+    onSuccess: () => { qc.invalidateQueries(['employees']); setModal(false); toast.success('Saved!') },
+  })
+  const remove = useMutation({
+    mutationFn: id => staffAPI.employees.delete(id),
+    onSuccess: () => { qc.invalidateQueries(['employees']); setDel(null); toast.success('Deleted') },
+  })
 
-  const openCreate = () => { setSel(null); setForm({ name: '', phone: '', email: '', department: '', shift: '', employment_type: 'FULL_TIME', hourly_rate: '', joined_date: '', address: '' }); setPhoto(null); setModal(true) }
-  const openEdit   = e => { setSel(e); setForm({ name: e.name, phone: e.phone, email: e.email, department: e.department || '', shift: e.shift || '', employment_type: e.employment_type, hourly_rate: e.hourly_rate, joined_date: e.joined_date, address: e.address }); setPhoto(null); setModal(true) }
-  const employees  = data || []
+  const openCreate = () => {
+    setSel(null)
+    setForm({ name: '', phone: '', email: '', department: '', shift: '', employment_type: 'FULL_TIME', monthly_salary: '', joined_date: '', address: '' })
+    setPhoto(null)
+    setModal(true)
+  }
+  const openEdit = e => {
+    setSel(e)
+    setForm({ name: e.name, phone: e.phone, email: e.email, department: e.department || '', shift: e.shift || '', employment_type: e.employment_type, monthly_salary: e.monthly_salary, joined_date: e.joined_date, address: e.address })
+    setPhoto(null)
+    setModal(true)
+  }
+  const employees = data || []
 
   return (
     <div>
@@ -320,19 +548,17 @@ function EmployeeTab() {
                 <p className="font-semibold text-gray-800">{emp.name}</p>
                 <p className="text-xs text-gray-400">{emp.phone}</p>
               </div>
-              <span className="text-xs font-mono bg-gray-100 text-gray-400 px-2 py-0.5 rounded-lg flex-shrink-0">
-                #{emp.id}
-              </span>
+              <span className="text-xs font-mono bg-gray-100 text-gray-400 px-2 py-0.5 rounded-lg flex-shrink-0">#{emp.id}</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {emp.department_name && <span className="badge-gray text-xs"><Building2 size={10} className="inline mr-0.5" />{emp.department_name}</span>}
               {emp.shift_name && <span className="badge-green text-xs"><Clock size={10} className="inline mr-0.5" />{emp.shift_name}</span>}
               <span className="badge-blue text-xs">{emp.employment_type.replace('_',' ')}</span>
             </div>
-            <p className="text-sm font-semibold text-gold-400">₹{parseFloat(emp.hourly_rate).toFixed(2)}/hr</p>
+            <p className="text-sm font-semibold text-amber-600">₹{parseFloat(emp.monthly_salary || 0).toLocaleString()}/month</p>
             <div className="flex gap-1 border-t border-gray-50 pt-2">
               <button onClick={() => openEdit(emp)} className="btn-ghost py-1 text-xs flex-1"><Edit2 size={12} />Edit</button>
-              <button onClick={() => setCalEmp(emp)} className="btn-ghost py-1 text-xs flex-1"><Calendar size={12} />Attendance</button>
+              <button onClick={() => onOpenCalendar(emp)} className="btn-ghost py-1 text-xs flex-1"><Calendar size={12} />Attendance</button>
               <button onClick={() => setDel(emp)} className="btn-ghost py-1 text-xs text-red-400"><Trash2 size={12} /></button>
             </div>
           </div>
@@ -366,58 +592,69 @@ function EmployeeTab() {
               <option value="CONTRACT">Contract</option>
             </select>
           </Field>
-          <Field label="Hourly Rate (₹)"><input type="number" step="0.01" className="input" value={form.hourly_rate} onChange={e => setForm({ ...form, hourly_rate: e.target.value })} /></Field>
+          <Field label="Monthly Salary (₹)">
+            <input type="number" step="0.01" className="input" value={form.monthly_salary} onChange={e => setForm({ ...form, monthly_salary: e.target.value })} />
+          </Field>
         </div>
         <Field label="Address"><textarea className="input" rows={2} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></Field>
         <Field label="Photo"><input type="file" accept="image/*" className="input" onChange={e => setPhoto(e.target.files[0])} /></Field>
       </Modal>
 
-      <AttendanceCalendarModal employee={calEmp} onClose={() => setCalEmp(null)} />
       <ConfirmDialog open={!!del} onClose={() => setDel(null)} onConfirm={() => remove.mutate(del?.id)} title="Remove Employee" message={`Remove ${del?.name}?`} danger />
     </div>
   )
 }
 
-// ── Attendance Tab ────────────────────────────────────
+// ── Attendance Tab (daily view) ───────────────────────
 function AttendanceTab() {
   const qc = useQueryClient()
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [date, setDate]   = useState(new Date().toISOString().split('T')[0])
   const [modal, setModal] = useState(false)
+  const [editRec, setEditRec] = useState(null)
   const [form, setForm]   = useState({ employee: '', date, status: 'PRESENT', check_in: '', check_out: '', notes: '' })
 
   const { data, isLoading } = useQuery({ queryKey: ['att-by-date', date], queryFn: () => staffAPI.attendance.byDate(date).then(r => r.data) })
   const { data: emps }      = useQuery({ queryKey: ['employees'], queryFn: () => staffAPI.employees.list().then(r => r.data.results || r.data) })
 
   const save = useMutation({
-    mutationFn: d => staffAPI.attendance.create(d),
-    onSuccess: () => { qc.invalidateQueries(['att-by-date']); setModal(false); toast.success('Attendance recorded') },
+    mutationFn: d => editRec ? staffAPI.attendance.update(editRec.id, d) : staffAPI.attendance.create(d),
+    onSuccess: () => { qc.invalidateQueries(['att-by-date']); setModal(false); setEditRec(null); toast.success('Saved') },
     onError: e => toast.error(e.response?.data?.non_field_errors?.[0] || 'Already recorded for this date'),
   })
 
-  const STATUS  = ['PRESENT','ABSENT','HALF','LEAVE']
+  const openCreate = () => {
+    setEditRec(null)
+    setForm({ employee: '', date, status: 'PRESENT', check_in: '', check_out: '', notes: '' })
+    setModal(true)
+  }
+  const openEdit = r => {
+    setEditRec(r)
+    setForm({ employee: r.employee, date: r.date, status: r.status, check_in: r.check_in || '', check_out: r.check_out || '', notes: r.notes || '' })
+    setModal(true)
+  }
+
   const records = data || []
+  const STATUS  = ['PRESENT','ABSENT','HALF','LEAVE']
 
   return (
     <div>
-      <div className="flex items-center gap-4 mb-5">
+      <div className="flex items-center gap-4 mb-5 flex-wrap">
         <div>
           <label className="label">Date</label>
           <input type="date" className="input w-44" value={date} onChange={e => setDate(e.target.value)} />
         </div>
-        <div className="flex items-end gap-2">
-          <div className="text-sm">
-            <span className="badge-green mr-2">{records.filter(r => r.status === 'PRESENT').length} Present</span>
-            <span className="badge-red mr-2">{records.filter(r => r.status === 'ABSENT').length} Absent</span>
-            <span className="badge-gold">{records.filter(r => r.status === 'HALF' || r.status === 'LEAVE').length} Other</span>
-          </div>
+        <div className="flex items-end gap-2 text-sm">
+          <span className="badge-green">{records.filter(r => r.status === 'PRESENT').length} Present</span>
+          <span className="badge-red">{records.filter(r => r.status === 'ABSENT').length} Absent</span>
+          <span className="badge-gold">{records.filter(r => r.status === 'HALF' || r.status === 'LEAVE').length} Other</span>
         </div>
-        <button onClick={() => { setForm({ employee: '', date, status: 'PRESENT', check_in: '', check_out: '', notes: '' }); setModal(true) }} className="btn-primary ml-auto"><Plus size={15} />Record</button>
+        <button onClick={openCreate} className="btn-primary ml-auto"><Plus size={15} />Record</button>
       </div>
       <div className="table-container">
         <table className="table">
-          <thead><tr><th>Employee</th><th>Status</th><th>Check In</th><th>Check Out</th><th>Hours</th><th>Notes</th></tr></thead>
+          <thead><tr><th>Employee</th><th>Status</th><th>Check In</th><th>Check Out</th><th>Hours</th><th>Late</th><th>OT</th><th>Notes</th><th></th></tr></thead>
           <tbody>
-            {isLoading && <tr><td colSpan={6} className="text-center py-8 text-gray-400">Loading…</td></tr>}
+            {isLoading && <tr><td colSpan={9} className="text-center py-8 text-gray-400">Loading…</td></tr>}
             {records.map(r => (
               <tr key={r.id}>
                 <td className="font-medium">{r.employee_name}</td>
@@ -425,17 +662,20 @@ function AttendanceTab() {
                 <td>{r.check_in || '—'}</td>
                 <td>{r.check_out || '—'}</td>
                 <td>{r.hours_worked > 0 ? `${r.hours_worked}h` : '—'}</td>
+                <td>{r.is_late ? <span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-medium">LATE</span> : '—'}</td>
+                <td>{r.ot_minutes > 0 ? <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded font-medium">+{r.ot_minutes}m</span> : '—'}</td>
                 <td className="text-gray-400 text-xs">{r.notes || '—'}</td>
+                <td><button onClick={() => openEdit(r)} className="btn-ghost py-1 text-xs"><Edit2 size={12} /></button></td>
               </tr>
             ))}
-            {!isLoading && records.length === 0 && <tr><td colSpan={6}><Empty message="No attendance records for this date" /></td></tr>}
+            {!isLoading && records.length === 0 && <tr><td colSpan={9}><Empty message="No records for this date" /></td></tr>}
           </tbody>
         </table>
       </div>
-      <Modal open={modal} onClose={() => setModal(false)} title="Record Attendance"
-        footer={<><button onClick={() => setModal(false)} className="btn-ghost">Cancel</button><button onClick={() => save.mutate(form)} disabled={save.isPending} className="btn-primary">Save</button></>}>
+      <Modal open={modal} onClose={() => { setModal(false); setEditRec(null) }} title={editRec ? 'Edit Attendance' : 'Record Attendance'}
+        footer={<><button onClick={() => { setModal(false); setEditRec(null) }} className="btn-ghost">Cancel</button><button onClick={() => save.mutate(form)} disabled={save.isPending} className="btn-primary">Save</button></>}>
         <Field label="Employee" required>
-          <select className="select" value={form.employee} onChange={e => setForm({ ...form, employee: e.target.value })}>
+          <select className="select" value={form.employee} onChange={e => setForm({ ...form, employee: e.target.value })} disabled={!!editRec}>
             <option value="">Select employee…</option>
             {(emps || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
@@ -446,10 +686,12 @@ function AttendanceTab() {
             {STATUS.map(s => <option key={s}>{s}</option>)}
           </select>
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Check In"><input type="time" className="input" value={form.check_in} onChange={e => setForm({ ...form, check_in: e.target.value })} /></Field>
-          <Field label="Check Out"><input type="time" className="input" value={form.check_out} onChange={e => setForm({ ...form, check_out: e.target.value })} /></Field>
-        </div>
+        {(form.status === 'PRESENT' || form.status === 'HALF') && (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Check In"><input type="time" className="input" value={form.check_in} onChange={e => setForm({ ...form, check_in: e.target.value })} /></Field>
+            <Field label="Check Out"><input type="time" className="input" value={form.check_out} onChange={e => setForm({ ...form, check_out: e.target.value })} /></Field>
+          </div>
+        )}
         <Field label="Notes"><input className="input" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></Field>
       </Modal>
     </div>
@@ -523,82 +765,38 @@ function PaymentsTab() {
 // ── Credentials Tab ───────────────────────────────────
 function CredentialsTab() {
   const qc = useQueryClient()
-  const [modal, setModal]   = useState(false)
-  const [sel, setSel]       = useState(null)
-  const [del, setDel]       = useState(null)
+  const [modal, setModal]     = useState(false)
+  const [sel, setSel]         = useState(null)
+  const [del, setDel]         = useState(null)
   const [showPwd, setShowPwd] = useState(false)
   const [confirmPwd, setConfirmPwd] = useState('')
-
-  const emptyForm = {
-    username: '', password: '', role: 'BILLER',
-    linked_employee: '', is_active: true,
-  }
+  const emptyForm = { username: '', password: '', role: 'BILLER', linked_employee: '', is_active: true }
   const [form, setForm] = useState(emptyForm)
 
-  const { data: allUsers, isLoading } = useQuery({
-    queryKey: ['staff-users'],
-    queryFn:  () => authAPI.users.list().then(r => r.data.results || r.data),
-  })
-  const { data: emps } = useQuery({
-    queryKey: ['employees'],
-    queryFn:  () => staffAPI.employees.list().then(r => r.data.results || r.data),
-  })
-
+  const { data: allUsers, isLoading } = useQuery({ queryKey: ['staff-users'], queryFn: () => authAPI.users.list().then(r => r.data.results || r.data) })
+  const { data: emps }                = useQuery({ queryKey: ['employees'], queryFn: () => staffAPI.employees.list().then(r => r.data.results || r.data) })
   const staffUsers = (allUsers || []).filter(u => u.role === 'BILLER' || u.role === 'KITCHEN')
 
   const save = useMutation({
     mutationFn: d => sel ? authAPI.users.update(sel.id, d) : authAPI.users.create(d),
-    onSuccess:  () => {
-      qc.invalidateQueries(['staff-users'])
-      setModal(false)
-      toast.success(sel ? 'Credentials updated' : 'User created')
-    },
-    onError: e => toast.error(e.response?.data?.username?.[0] || 'Failed to save'),
+    onSuccess:  () => { qc.invalidateQueries(['staff-users']); setModal(false); toast.success(sel ? 'Updated' : 'Created') },
+    onError: e => toast.error(e.response?.data?.username?.[0] || 'Failed'),
   })
   const remove = useMutation({
     mutationFn: id => authAPI.users.delete(id),
-    onSuccess:  () => { qc.invalidateQueries(['staff-users']); setDel(null); toast.success('User deleted') },
+    onSuccess: () => { qc.invalidateQueries(['staff-users']); setDel(null); toast.success('Deleted') },
   })
 
-  const openCreate = () => {
-    setSel(null)
-    setForm(emptyForm)
-    setConfirmPwd('')
-    setShowPwd(false)
-    setModal(true)
-  }
-  const openEdit = u => {
-    setSel(u)
-    setForm({
-      username: u.username, password: '',
-      role: u.role, linked_employee: u.linked_employee || '',
-      is_active: u.is_active,
-    })
-    setConfirmPwd('')
-    setShowPwd(false)
-    setModal(true)
-  }
+  const openCreate = () => { setSel(null); setForm(emptyForm); setConfirmPwd(''); setShowPwd(false); setModal(true) }
+  const openEdit   = u => { setSel(u); setForm({ username: u.username, password: '', role: u.role, linked_employee: u.linked_employee || '', is_active: u.is_active }); setConfirmPwd(''); setShowPwd(false); setModal(true) }
 
   const handleSubmit = () => {
-    if (!sel && form.password !== confirmPwd) {
-      toast.error('Passwords do not match')
-      return
-    }
-    if (!sel && form.password.length < 6) {
-      toast.error('Password must be at least 6 characters')
-      return
-    }
-    const payload = {
-      username:        form.username,
-      role:            form.role,
-      linked_employee: form.linked_employee || null,
-      is_active:       form.is_active,
-    }
+    if (!sel && form.password !== confirmPwd) { toast.error('Passwords do not match'); return }
+    if (!sel && form.password.length < 6) { toast.error('Password must be at least 6 characters'); return }
+    const payload = { username: form.username, role: form.role, linked_employee: form.linked_employee || null, is_active: form.is_active }
     if (form.password) payload.password = form.password
     save.mutate(payload)
   }
-
-  const roleColor = role => role === 'KITCHEN' ? 'badge-gold' : 'badge-blue'
 
   return (
     <div>
@@ -607,27 +805,15 @@ function CredentialsTab() {
       </div>
       <div className="table-container">
         <table className="table">
-          <thead>
-            <tr>
-              <th>Username</th>
-              <th>Role</th>
-              <th>Linked Employee</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Username</th><th>Role</th><th>Linked Employee</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
             {isLoading && <tr><td colSpan={5} className="text-center py-8 text-gray-400">Loading…</td></tr>}
             {staffUsers.map(u => (
               <tr key={u.id}>
                 <td className="font-medium font-mono">{u.username}</td>
-                <td><span className={`${roleColor(u.role)} text-xs`}>{u.role}</span></td>
+                <td><span className={u.role === 'KITCHEN' ? 'badge-gold text-xs' : 'badge-blue text-xs'}>{u.role}</span></td>
                 <td>{u.linked_employee_name || <span className="text-gray-300">—</span>}</td>
-                <td>
-                  <span className={u.is_active ? 'badge-green' : 'badge-red'}>
-                    {u.is_active ? 'Active' : 'Disabled'}
-                  </span>
-                </td>
+                <td><span className={u.is_active ? 'badge-green' : 'badge-red'}>{u.is_active ? 'Active' : 'Disabled'}</span></td>
                 <td>
                   <div className="flex gap-1">
                     <button onClick={() => openEdit(u)} className="btn-ghost py-1 text-xs"><Edit2 size={13} />Edit</button>
@@ -636,97 +822,65 @@ function CredentialsTab() {
                 </td>
               </tr>
             ))}
-            {!isLoading && staffUsers.length === 0 && (
-              <tr><td colSpan={5}><Empty message="No staff users yet" /></td></tr>
-            )}
+            {!isLoading && staffUsers.length === 0 && <tr><td colSpan={5}><Empty message="No staff users yet" /></td></tr>}
           </tbody>
         </table>
       </div>
-
       <Modal open={modal} onClose={() => setModal(false)} title={sel ? 'Edit Staff User' : 'Create Staff User'} size="md"
-        footer={
-          <>
-            <button onClick={() => setModal(false)} className="btn-ghost">Cancel</button>
-            <button onClick={handleSubmit} disabled={save.isPending} className="btn-primary">
-              {sel ? 'Update' : 'Create'}
-            </button>
-          </>
-        }>
+        footer={<><button onClick={() => setModal(false)} className="btn-ghost">Cancel</button><button onClick={handleSubmit} disabled={save.isPending} className="btn-primary">{sel ? 'Update' : 'Create'}</button></>}>
         <div className="space-y-3">
-          <Field label="Username" required>
-            <input className="input" value={form.username}
-              onChange={e => setForm({ ...form, username: e.target.value })} />
-          </Field>
-
+          <Field label="Username" required><input className="input" value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} /></Field>
           <Field label={sel ? 'New Password (leave blank to keep)' : 'Password'} required={!sel}>
             <div className="relative">
-              <input
-                type={showPwd ? 'text' : 'password'}
-                className="input pr-10"
-                value={form.password}
-                onChange={e => setForm({ ...form, password: e.target.value })}
-                placeholder={sel ? 'Leave blank to keep current' : 'Min 6 characters'}
-              />
-              <button type="button" onClick={() => setShowPwd(p => !p)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">
-                {showPwd ? 'Hide' : 'Show'}
-              </button>
+              <input type={showPwd ? 'text' : 'password'} className="input pr-10" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={sel ? 'Leave blank to keep current' : 'Min 6 characters'} />
+              <button type="button" onClick={() => setShowPwd(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{showPwd ? 'Hide' : 'Show'}</button>
             </div>
           </Field>
-
-          {!sel && (
-            <Field label="Confirm Password" required>
-              <input
-                type={showPwd ? 'text' : 'password'}
-                className="input"
-                value={confirmPwd}
-                onChange={e => setConfirmPwd(e.target.value)}
-                placeholder="Re-enter password"
-              />
-            </Field>
-          )}
-
+          {!sel && <Field label="Confirm Password" required><input type={showPwd ? 'text' : 'password'} className="input" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} /></Field>}
           <Field label="Role">
-            <select className="select" value={form.role}
-              onChange={e => setForm({ ...form, role: e.target.value })}>
+            <select className="select" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
               <option value="BILLER">Biller</option>
               <option value="KITCHEN">Kitchen</option>
             </select>
           </Field>
-
           <Field label="Link to Employee (optional)">
-            <select className="select" value={form.linked_employee}
-              onChange={e => setForm({ ...form, linked_employee: e.target.value })}>
+            <select className="select" value={form.linked_employee} onChange={e => setForm({ ...form, linked_employee: e.target.value })}>
               <option value="">— None —</option>
               {(emps || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
             </select>
           </Field>
-
           <div className="flex items-center gap-2 pt-1">
-            <input type="checkbox" id="user-active" checked={form.is_active}
-              onChange={e => setForm({ ...form, is_active: e.target.checked })}
-              className="w-4 h-4 accent-primary-500" />
+            <input type="checkbox" id="user-active" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="w-4 h-4 accent-primary-500" />
             <label htmlFor="user-active" className="text-sm text-gray-600">Account active</label>
           </div>
         </div>
       </Modal>
-
-      <ConfirmDialog open={!!del} onClose={() => setDel(null)} onConfirm={() => remove.mutate(del?.id)}
-        title="Delete User" message={`Delete user "${del?.username}"? This cannot be undone.`} danger />
+      <ConfirmDialog open={!!del} onClose={() => setDel(null)} onConfirm={() => remove.mutate(del?.id)} title="Delete User" message={`Delete user "${del?.username}"?`} danger />
     </div>
   )
 }
 
 // ── Main StaffPage ────────────────────────────────────
 export default function StaffPage() {
-  const [tab, setTab] = useState('employees')
+  const [tab, setTab]       = useState('employees')
+  const [calEmp, setCalEmp] = useState(null)   // full-page calendar employee
+
   const tabs = [
-    { id: 'employees',   label: 'Employees',   icon: <Users size={15} /> },
-    { id: 'shifts',      label: 'Shifts',       icon: <Clock size={15} /> },
-    { id: 'attendance',  label: 'Attendance',   icon: <Calendar size={15} /> },
-    { id: 'payments',    label: 'Payments',     icon: <CreditCard size={15} /> },
-    { id: 'credentials', label: 'Credentials',  icon: <KeyRound size={15} /> },
+    { id: 'employees',   label: 'Employees',  icon: <Users size={15} /> },
+    { id: 'shifts',      label: 'Shifts',     icon: <Clock size={15} /> },
+    { id: 'attendance',  label: 'Attendance', icon: <Calendar size={15} /> },
+    { id: 'payments',    label: 'Payments',   icon: <CreditCard size={15} /> },
+    { id: 'credentials', label: 'Credentials',icon: <KeyRound size={15} /> },
   ]
+
+  // Full-page calendar replaces all other content
+  if (calEmp) {
+    return (
+      <div className="flex flex-col h-full p-1">
+        <AttendanceCalendar employee={calEmp} onBack={() => setCalEmp(null)} />
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -745,7 +899,7 @@ export default function StaffPage() {
           </button>
         ))}
       </div>
-      {tab === 'employees'   && <EmployeeTab />}
+      {tab === 'employees'   && <EmployeeTab onOpenCalendar={setCalEmp} />}
       {tab === 'shifts'      && <ShiftTab />}
       {tab === 'attendance'  && <AttendanceTab />}
       {tab === 'payments'    && <PaymentsTab />}

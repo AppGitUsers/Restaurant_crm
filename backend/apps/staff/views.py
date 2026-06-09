@@ -41,7 +41,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         month = int(request.query_params.get('month', __import__('datetime').date.today().month))
         records = Attendance.objects.filter(
             employee=employee, date__year=year, date__month=month
-        ).order_by('date')
+        ).select_related('employee__shift').order_by('date')
         return Response(AttendanceSerializer(records, many=True).data)
 
     @action(detail=True, methods=['get'])
@@ -52,7 +52,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
 
 class AttendanceViewSet(viewsets.ModelViewSet):
-    queryset = Attendance.objects.select_related('employee').all()
+    queryset = Attendance.objects.select_related('employee__shift').all()
     serializer_class   = AttendanceSerializer
     filterset_fields   = ['employee', 'date', 'status']
     search_fields      = ['employee__name']
