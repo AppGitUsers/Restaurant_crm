@@ -1,9 +1,56 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { inventoryAPI, menuAPI } from '@/api'
 import { PageLoader, Modal, SearchBar, StatusBadge, ConfirmDialog, Field, Empty } from '@/components/ui'
 import toast from 'react-hot-toast'
 import { Plus, Edit2, Trash2, Package, Truck, FileText, CreditCard, AlertTriangle } from 'lucide-react'
+
+// ── Searchable ingredient combobox ────────────────────
+function IngredientSelect({ ingredients, value, onChange }) {
+  const [search, setSearch] = useState('')
+  const [open, setOpen]     = useState(false)
+  const ref                 = useRef(null)
+
+  const list     = ingredients || []
+  const selected = list.find(i => String(i.id) === String(value))
+  const filtered = search
+    ? list.filter(i => i.name.toLowerCase().includes(search.toLowerCase()))
+    : list
+
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        className="input w-full"
+        placeholder="Search ingredient…"
+        value={open ? search : (selected ? `${selected.name} (${selected.unit})` : '')}
+        onFocus={() => { setOpen(true); setSearch('') }}
+        onChange={e => setSearch(e.target.value)}
+        onKeyDown={e => e.key === 'Escape' && setOpen(false)}
+      />
+      {open && (
+        <div className="absolute left-0 right-0 z-[100] mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-44 overflow-y-auto">
+          {filtered.length === 0
+            ? <p className="px-3 py-2 text-sm text-gray-400">No results</p>
+            : filtered.map(i => (
+              <button key={i.id} type="button"
+                className="w-full text-left px-3 py-2 text-sm hover:bg-primary-50 flex justify-between items-center"
+                onMouseDown={() => { onChange(String(i.id)); setOpen(false); setSearch('') }}>
+                <span className="font-medium">{i.name}</span>
+                <span className="text-gray-400 text-xs ml-2">{i.unit}</span>
+              </button>
+            ))
+          }
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Vendor Tab ────────────────────────────────────────
 function VendorTab() {
@@ -80,7 +127,7 @@ function StockTab() {
     onSuccess: () => { qc.invalidateQueries(['stock']); setAdjustModal(null); toast.success('Stock adjusted') },
   })
 
-  const stocks = data || []
+  const stocks   = data || []
   const lowCount = (lowAlert || []).length
 
   return (
@@ -131,29 +178,76 @@ function StockTab() {
 // ── Invoice Tab ────────────────────────────────────────
 function InvoiceTab() {
   const qc = useQueryClient()
-  const [search, setSearch]     = useState('')
+  const today = new Date().toISOString().split('T')[0]
+
+  const [search, setSearch]       = useState('')
   const [statusFilter, setStatus] = useState('')
-  const [modal, setModal]       = useState(false)
-  const [detailModal, setDetail] = useState(null)
-  const [payModal, setPayModal] = useState(null)
-  const [payForm, setPayForm]   = useState({ amount: '', payment_date: '', payment_method: 'Cash', notes: '' })
+  const [modal, setModal]         = useState(false)
+  const [detailModal, setDetail]  = useState(null)
+  const [payModal, setPayModal]   = useState(null)
+  const [payForm, setPayForm]     = useState({ amount: '', payment_date: '', payment_method: 'Cash', notes: '' })
 
   const { data: vendors }     = useQuery({ queryKey: ['vendors'], queryFn: () => inventoryAPI.vendors.list().then(r => r.data.results || r.data) })
   const { data: ingredients } = useQuery({ queryKey: ['ingredients'], queryFn: () => menuAPI.ingredients.list().then(r => r.data.results || r.data) })
 
-  const [form, setForm]   = useState({ vendor: '', invoice_number: '', invoice_date: '', due_date: '', total_amount: '', notes: '', items: [] })
+  const emptyForm = {
+    vendor: '', invoice_number: '', invoice_date: today,
+    due_date: '', extra_charges: '0', total_amount: '0.00', notes: '', items: [],
+  }
+  const [form, setForm] = useState(emptyForm)
 
-  const { data, isLoading } = useQuery({ queryKey: ['invoices', search, statusFilter], queryFn: () => inventoryAPI.invoices.list({ search, status: statusFilter || undefined }).then(r => r.data.results || r.data) })
+  const { data, isLoading } = useQuery({
+    queryKey: ['invoices', search, statusFilter],
+    queryFn: () => inventoryAPI.invoices.list({ search, status: statusFilter || undefined }).then(r => r.data.results || r.data),
+  })
 
-  const save          = useMutation({ mutationFn: d => inventoryAPI.invoices.create(d), onSuccess: () => { qc.invalidateQueries(['invoices']); setModal(false); toast.success('Invoice created') } })
-  const markReceived  = useMutation({ mutationFn: id => inventoryAPI.invoices.markReceived(id), onSuccess: () => { qc.invalidateQueries(['invoices']); qc.invalidateQueries(['stock']); toast.success('Stock updated from invoice') } })
-  const addPayment    = useMutation({ mutationFn: ({ id, data }) => inventoryAPI.invoices.addPayment(id, data), onSuccess: () => { qc.invalidateQueries(['invoices']); setPayModal(null); toast.success('Payment recorded') } })
+  const save         = useMutation({ mutationFn: d => inventoryAPI.invoices.create(d), onSuccess: () => { qc.invalidateQueries(['invoices']); setModal(false); toast.success('Invoice created') } })
+  const markReceived = useMutation({ mutationFn: id => inventoryAPI.invoices.markReceived(id), onSuccess: () => { qc.invalidateQueries(['invoices']); qc.invalidateQueries(['stock']); toast.success('Stock updated from invoice') } })
+  const addPayment   = useMutation({ mutationFn: ({ id, data }) => inventoryAPI.invoices.addPayment(id, data), onSuccess: () => { qc.invalidateQueries(['invoices']); setPayModal(null); toast.success('Payment recorded') } })
 
-  const addInvItem    = () => setForm({ ...form, items: [...form.items, { ingredient: '', quantity: '', unit_price: '' }] })
-  const removeInvItem = i  => setForm({ ...form, items: form.items.filter((_, idx) => idx !== i) })
-  const updateInvItem = (i, f, v) => setForm({ ...form, items: form.items.map((row, idx) => idx === i ? { ...row, [f]: v } : row) })
+  // ── helpers ──
+  const calcSubtotal = items =>
+    items.reduce((s, r) => s + (parseFloat(r.quantity) || 0) * (parseFloat(r.unit_price) || 0), 0)
 
-  const invoices = data || []
+  const addInvItem = () => {
+    setForm(f => ({ ...f, items: [...f.items, { ingredient: '', quantity: '', qty_per_package: '1', unit_price: '' }] }))
+  }
+
+  const removeInvItem = i => {
+    const newItems = form.items.filter((_, idx) => idx !== i)
+    const sub      = calcSubtotal(newItems)
+    const extra    = parseFloat(form.extra_charges) || 0
+    setForm({ ...form, items: newItems, total_amount: (sub + extra).toFixed(2) })
+  }
+
+  const updateInvItem = (i, field, val) => {
+    const newItems = form.items.map((row, idx) => idx === i ? { ...row, [field]: val } : row)
+    const sub      = calcSubtotal(newItems)
+    const extra    = parseFloat(form.extra_charges) || 0
+    setForm({ ...form, items: newItems, total_amount: (sub + extra).toFixed(2) })
+  }
+
+  const onExtraChange = val => {
+    const sub = calcSubtotal(form.items)
+    setForm(f => ({ ...f, extra_charges: val, total_amount: (sub + (parseFloat(val) || 0)).toFixed(2) }))
+  }
+
+  const onTotalChange = val => {
+    const sub   = calcSubtotal(form.items)
+    const extra = Math.max(0, (parseFloat(val) || 0) - sub)
+    setForm(f => ({ ...f, total_amount: val, extra_charges: extra.toFixed(2) }))
+  }
+
+  const handleSubmit = () => {
+    save.mutate({
+      ...form,
+      invoice_number: form.invoice_number || null,
+      due_date: form.due_date || null,
+    })
+  }
+
+  const itemsSubtotal = calcSubtotal(form.items)
+  const invoices      = data || []
 
   return (
     <div>
@@ -164,7 +258,7 @@ function InvoiceTab() {
           <option value="PARTIAL">Partial</option>
           <option value="PAID">Paid</option>
         </select>
-        <button onClick={() => { setForm({ vendor: '', invoice_number: '', invoice_date: '', due_date: '', total_amount: '', notes: '', items: [] }); setModal(true) }} className="btn-primary"><Plus size={15} />New Invoice</button>
+        <button onClick={() => { setForm(emptyForm); setModal(true) }} className="btn-primary"><Plus size={15} />New Invoice</button>
       </SearchBar>
 
       <div className="table-container">
@@ -185,7 +279,7 @@ function InvoiceTab() {
                   <div className="flex gap-1 flex-wrap">
                     <button onClick={() => setDetail(inv)} className="btn-ghost py-1 text-xs"><FileText size={12} />View</button>
                     {!inv.stock_updated && <button onClick={() => markReceived.mutate(inv.id)} className="btn-ghost py-1 text-xs text-primary-600"><Package size={12} />Receive</button>}
-                    {inv.status !== 'PAID' && <button onClick={() => { setPayModal(inv); setPayForm({ amount: inv.balance_due, payment_date: new Date().toISOString().split('T')[0], payment_method: 'Cash', notes: '' }) }} className="btn-ghost py-1 text-xs text-gold-400"><CreditCard size={12} />Pay</button>}
+                    {inv.status !== 'PAID' && <button onClick={() => { setPayModal(inv); setPayForm({ amount: inv.balance_due, payment_date: today, payment_method: 'Cash', notes: '' }) }} className="btn-ghost py-1 text-xs text-gold-400"><CreditCard size={12} />Pay</button>}
                   </div>
                 </td>
               </tr>
@@ -195,9 +289,16 @@ function InvoiceTab() {
         </table>
       </div>
 
-      {/* Create Invoice Modal */}
+      {/* ── Create Invoice Modal ── */}
       <Modal open={modal} onClose={() => setModal(false)} title="New Vendor Invoice" size="xl"
-        footer={<><button onClick={() => setModal(false)} className="btn-ghost">Cancel</button><button onClick={() => save.mutate(form)} disabled={save.isPending} className="btn-primary">Create Invoice</button></>}>
+        footer={
+          <>
+            <button onClick={() => setModal(false)} className="btn-ghost">Cancel</button>
+            <button onClick={handleSubmit} disabled={save.isPending} className="btn-primary">Create Invoice</button>
+          </>
+        }>
+
+        {/* Header fields */}
         <div className="grid grid-cols-2 gap-3 mb-4">
           <Field label="Vendor" required>
             <select className="select" value={form.vendor} onChange={e => setForm({ ...form, vendor: e.target.value })}>
@@ -205,29 +306,106 @@ function InvoiceTab() {
               {(vendors || []).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
             </select>
           </Field>
-          <Field label="Invoice Number" required><input className="input" value={form.invoice_number} onChange={e => setForm({ ...form, invoice_number: e.target.value })} /></Field>
-          <Field label="Invoice Date"><input type="date" className="input" value={form.invoice_date} onChange={e => setForm({ ...form, invoice_date: e.target.value })} /></Field>
-          <Field label="Due Date"><input type="date" className="input" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} /></Field>
-          <Field label="Total Amount"><input type="number" step="0.01" className="input" value={form.total_amount} onChange={e => setForm({ ...form, total_amount: e.target.value })} /></Field>
+          <Field label="Invoice No. (Vendor's — optional)">
+            <input className="input" placeholder="Auto-generated if blank"
+              value={form.invoice_number} onChange={e => setForm({ ...form, invoice_number: e.target.value })} />
+          </Field>
+          <Field label="Invoice Date">
+            <input type="date" className="input" value={form.invoice_date}
+              onChange={e => setForm({ ...form, invoice_date: e.target.value })} />
+          </Field>
+          <Field label="Due Date">
+            <input type="date" className="input" value={form.due_date}
+              onChange={e => setForm({ ...form, due_date: e.target.value })} />
+          </Field>
         </div>
-        <p className="label mb-2">Invoice Items</p>
-        <div className="space-y-2 mb-3">
-          {form.items.map((row, i) => (
-            <div key={i} className="flex gap-2 items-center">
-              <select className="select flex-1" value={row.ingredient} onChange={e => updateInvItem(i, 'ingredient', e.target.value)}>
-                <option value="">Ingredient…</option>
-                {(ingredients || []).map(ing => <option key={ing.id} value={ing.id}>{ing.name} ({ing.unit})</option>)}
-              </select>
-              <input type="number" step="0.001" placeholder="Qty" className="input w-24" value={row.quantity} onChange={e => updateInvItem(i, 'quantity', e.target.value)} />
-              <input type="number" step="0.01"  placeholder="Unit Price" className="input w-28" value={row.unit_price} onChange={e => updateInvItem(i, 'unit_price', e.target.value)} />
-              <button onClick={() => removeInvItem(i)} className="text-red-400"><Trash2 size={14} /></button>
+
+        {/* Items section */}
+        <div className="flex items-center justify-between mb-2">
+          <p className="label">Invoice Items</p>
+          <button type="button" onClick={addInvItem} className="btn-outline text-xs"><Plus size={13} />Add Item</button>
+        </div>
+        <div className="border border-gray-200 rounded-lg overflow-visible mb-4">
+          {form.items.length > 0 ? (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+                <tr>
+                  <th className="text-left px-3 py-2">Ingredient</th>
+                  <th className="text-center px-2 py-2 w-20">Packages</th>
+                  <th className="text-center px-2 py-2 w-24">Qty / Pkg</th>
+                  <th className="text-center px-2 py-2 w-28">Unit Price (₹)</th>
+                  <th className="text-right px-2 py-2 w-24">Total</th>
+                  <th className="w-8"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {form.items.map((row, i) => (
+                  <tr key={i} className="border-t border-gray-100">
+                    <td className="px-2 py-1.5">
+                      <IngredientSelect ingredients={ingredients} value={row.ingredient}
+                        onChange={v => updateInvItem(i, 'ingredient', v)} />
+                    </td>
+                    <td className="px-1 py-1.5">
+                      <input type="number" min="0" step="0.001" placeholder="5"
+                        className="input text-center w-full"
+                        value={row.quantity} onChange={e => updateInvItem(i, 'quantity', e.target.value)} />
+                    </td>
+                    <td className="px-1 py-1.5">
+                      <input type="number" min="0" step="0.001" placeholder="1"
+                        className="input text-center w-full"
+                        value={row.qty_per_package} onChange={e => updateInvItem(i, 'qty_per_package', e.target.value)} />
+                    </td>
+                    <td className="px-1 py-1.5">
+                      <input type="number" min="0" step="0.01" placeholder="0.00"
+                        className="input text-right w-full"
+                        value={row.unit_price} onChange={e => updateInvItem(i, 'unit_price', e.target.value)} />
+                    </td>
+                    <td className="px-2 py-1.5 text-right font-medium text-gray-700">
+                      ₹{((parseFloat(row.quantity) || 0) * (parseFloat(row.unit_price) || 0)).toFixed(2)}
+                    </td>
+                    <td className="pr-2">
+                      <button type="button" onClick={() => removeInvItem(i)} className="text-red-400 hover:text-red-600">
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="text-center py-6 text-sm text-gray-400">
+              No items yet — click "Add Item" to start
             </div>
-          ))}
+          )}
         </div>
-        <button onClick={addInvItem} className="btn-outline text-xs"><Plus size={13} />Add Item</button>
+
+        {/* Totals */}
+        <div className="bg-gray-50 rounded-lg px-4 py-3 space-y-2 text-sm mb-3">
+          <div className="flex justify-between">
+            <span className="text-gray-500">Items Subtotal</span>
+            <span className="font-medium">₹{itemsSubtotal.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between items-center gap-4">
+            <span className="text-gray-500">
+              Extra Charges <span className="text-gray-400">(GST / delivery / other)</span>
+            </span>
+            <input type="number" min="0" step="0.01" className="input w-36 text-right"
+              value={form.extra_charges} onChange={e => onExtraChange(e.target.value)} />
+          </div>
+          <div className="flex justify-between items-center gap-4 border-t border-gray-200 pt-2 font-semibold text-base">
+            <span>Invoice Total</span>
+            <input type="number" min="0" step="0.01" className="input w-36 text-right font-semibold"
+              value={form.total_amount} onChange={e => onTotalChange(e.target.value)} />
+          </div>
+        </div>
+
+        <Field label="Notes">
+          <textarea className="input" rows={2} value={form.notes}
+            onChange={e => setForm({ ...form, notes: e.target.value })} />
+        </Field>
       </Modal>
 
-      {/* Invoice Detail Modal */}
+      {/* ── Invoice Detail Modal ── */}
       <Modal open={!!detailModal} onClose={() => setDetail(null)} title={`Invoice: ${detailModal?.invoice_number}`} size="lg">
         {detailModal && (
           <div className="space-y-4">
@@ -239,12 +417,41 @@ function InvoiceTab() {
             </div>
             <div>
               <p className="label mb-2">Items</p>
-              <div className="table-container"><table className="table">
-                <thead><tr><th>Ingredient</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
-                <tbody>{detailModal.items.map((item, i) => (
-                  <tr key={i}><td>{item.ingredient_name}</td><td>{item.quantity} {item.unit}</td><td>₹{item.unit_price}</td><td>₹{parseFloat(item.line_total).toFixed(2)}</td></tr>
-                ))}</tbody>
-              </table></div>
+              <div className="table-container">
+                <table className="table">
+                  <thead><tr><th>Ingredient</th><th>Pkgs</th><th>Qty/Pkg</th><th>Stock Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
+                  <tbody>
+                    {detailModal.items.map((item, i) => (
+                      <tr key={i}>
+                        <td>{item.ingredient_name}</td>
+                        <td>{item.quantity}</td>
+                        <td>{item.qty_per_package} {item.unit}</td>
+                        <td className="font-medium text-primary-600">
+                          {(parseFloat(item.quantity) * parseFloat(item.qty_per_package || 1)).toFixed(3)} {item.unit}
+                        </td>
+                        <td>₹{item.unit_price}</td>
+                        <td>₹{parseFloat(item.line_total).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="bg-gray-50 rounded-lg px-4 py-3 space-y-1 text-sm">
+              <div className="flex justify-between text-gray-500">
+                <span>Items Subtotal</span>
+                <span>₹{detailModal.items.reduce((s, it) => s + parseFloat(it.line_total), 0).toFixed(2)}</span>
+              </div>
+              {parseFloat(detailModal.extra_charges) > 0 && (
+                <div className="flex justify-between text-gray-500">
+                  <span>Extra Charges</span>
+                  <span>₹{parseFloat(detailModal.extra_charges).toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-semibold border-t pt-1">
+                <span>Invoice Total</span>
+                <span>₹{parseFloat(detailModal.total_amount).toFixed(2)}</span>
+              </div>
             </div>
             {detailModal.payments.length > 0 && (
               <div>
@@ -269,7 +476,7 @@ function InvoiceTab() {
         )}
       </Modal>
 
-      {/* Add Payment Modal */}
+      {/* ── Add Payment Modal ── */}
       <Modal open={!!payModal} onClose={() => setPayModal(null)} title={`Add Payment — ${payModal?.invoice_number}`}
         footer={<><button onClick={() => setPayModal(null)} className="btn-ghost">Cancel</button>
           <button onClick={() => addPayment.mutate({ id: payModal.id, data: payForm })} disabled={addPayment.isPending} className="btn-primary">Record Payment</button></>}>
@@ -277,7 +484,7 @@ function InvoiceTab() {
         <Field label="Payment Date"><input type="date" className="input" value={payForm.payment_date} onChange={e => setPayForm({ ...payForm, payment_date: e.target.value })} /></Field>
         <Field label="Method">
           <select className="select" value={payForm.payment_method} onChange={e => setPayForm({ ...payForm, payment_method: e.target.value })}>
-            {['Cash','UPI','Bank Transfer','Cheque'].map(m => <option key={m}>{m}</option>)}
+            {['Cash', 'UPI', 'Bank Transfer', 'Cheque'].map(m => <option key={m}>{m}</option>)}
           </select>
         </Field>
         <Field label="Notes"><input className="input" value={payForm.notes} onChange={e => setPayForm({ ...payForm, notes: e.target.value })} /></Field>

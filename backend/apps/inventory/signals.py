@@ -41,14 +41,18 @@ def push_stock_on_receive(sender, instance, **kwargs):
         return
 
     for item in instance.items.select_related('ingredient').all():
-        stock, _ = Stock.objects.get_or_create(ingredient=item.ingredient)
-        stock.current_quantity += item.quantity
+        stock_qty = item.quantity * item.qty_per_package
+        stock, _ = Stock.objects.get_or_create(
+            ingredient=item.ingredient,
+            defaults={'current_quantity': 0, 'minimum_threshold': 0},
+        )
+        stock.current_quantity += stock_qty
         stock.save(update_fields=['current_quantity'])
 
         StockTransaction.objects.create(
             ingredient = item.ingredient,
             tx_type    = 'IN',
-            quantity   = item.quantity,
+            quantity   = stock_qty,
             reference  = f"invoice:{instance.invoice_number}",
             note       = f"Received from {instance.vendor.name}",
         )

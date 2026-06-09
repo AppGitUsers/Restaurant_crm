@@ -45,10 +45,12 @@ class VendorInvoice(models.Model):
         PAID    = 'PAID',    'Paid'
 
     vendor          = models.ForeignKey(Vendor, on_delete=models.PROTECT, related_name='invoices')
-    invoice_number  = models.CharField(max_length=100, unique=True)
+    invoice_number  = models.CharField(max_length=100, unique=True, blank=True, null=True)
     invoice_date    = models.DateField()
     due_date        = models.DateField(null=True, blank=True)
     total_amount    = models.DecimalField(max_digits=12, decimal_places=2)
+    extra_charges   = models.DecimalField(max_digits=12, decimal_places=2, default=0,
+                                          help_text='GST, delivery, or other additional charges')
     paid_amount     = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     status          = models.CharField(max_length=10, choices=Status.choices, default=Status.UNPAID)
     notes           = models.TextField(blank=True)
@@ -77,10 +79,18 @@ class VendorInvoice(models.Model):
 
 
 class InvoiceItem(models.Model):
-    invoice    = models.ForeignKey(VendorInvoice, on_delete=models.CASCADE, related_name='items')
-    ingredient = models.ForeignKey(Ingredient, on_delete=models.PROTECT)
-    quantity   = models.DecimalField(max_digits=12, decimal_places=3)
-    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    invoice         = models.ForeignKey(VendorInvoice, on_delete=models.CASCADE, related_name='items')
+    ingredient      = models.ForeignKey(Ingredient, on_delete=models.PROTECT)
+    quantity        = models.DecimalField(max_digits=12, decimal_places=3,
+                                          help_text='Number of packages purchased')
+    qty_per_package = models.DecimalField(max_digits=12, decimal_places=3, default=1,
+                                          help_text='Units per package (e.g. 500 ml per bottle)')
+    unit_price      = models.DecimalField(max_digits=10, decimal_places=2,
+                                          help_text='Price per package')
+
+    @property
+    def stock_quantity(self):
+        return self.quantity * self.qty_per_package
 
     @property
     def line_total(self):

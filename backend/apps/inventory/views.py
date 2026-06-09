@@ -73,7 +73,7 @@ class VendorInvoiceViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Stock already updated for this invoice.'}, status=400)
         invoice.stock_updated = True
         invoice.save()
-        return Response({'detail': 'Invoice marked received. Stock updated.'})
+        return Response({'detail': 'Stock updated from invoice.'})
 
     @action(detail=True, methods=['post'])
     def add_payment(self, request, pk=None):
