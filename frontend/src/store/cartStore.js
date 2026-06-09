@@ -1,59 +1,99 @@
 import { create } from 'zustand'
 
+// Stable key from sorted addon IDs
+const addonSig = (addons) =>
+  addons && addons.length
+    ? [...addons].sort((a, b) => a.id - b.id).map(a => a.id).join('-')
+    : ''
+
+const makeCartId = (foodItemId, addons) => {
+  const sig = addonSig(addons)
+  return sig ? `${foodItemId}::${sig}` : `${foodItemId}`
+}
+
 export const useCartStore = create((set, get) => ({
-  items: [],          // [{ food_item, quantity, unit_price, notes, selected_addons }]
+  items: [],          // [{ cartId, food_item, quantity, unit_price, notes, selected_addons }]
   customerName:  '',
   customerPhone: '',
   paymentMethod: 'CASH',
   discount:      0,
   taxPercent:    5,
 
+  // Total qty of a food item across all cart rows (for stock limit)
+  _totalQty: (foodItemId) =>
+    get().items.filter(i => i.food_item.id === foodItemId).reduce((s, i) => s + i.quantity, 0),
+
   addItem: (foodItem) => {
-    const items    = get().items
-    const existing = items.find(i => i.food_item.id === foodItem.id)
-    const maxQty   = foodItem.makeable_count ?? Infinity
+    const items  = get().items
+    const maxQty = foodItem.makeable_count ?? Infinity
+    const total  = items.filter(i => i.food_item.id === foodItem.id).reduce((s, i) => s + i.quantity, 0)
+
+    if (maxQty <= 0 || total >= maxQty) return false
+
+    // Always target the no-addon row for this food item
+    const cartId   = makeCartId(foodItem.id, [])
+    const existing = items.find(i => i.cartId === cartId)
 
     if (existing) {
-      if (existing.quantity >= maxQty) return false
       set({ items: items.map(i =>
-        i.food_item.id === foodItem.id
-          ? { ...i, quantity: i.quantity + 1 }
-          : i
+        i.cartId === cartId ? { ...i, quantity: i.quantity + 1 } : i
       )})
     } else {
-      if (maxQty <= 0) return false
       set({ items: [...items, {
-        food_item:       foodItem,
-        quantity:        1,
-        unit_price:      parseFloat(foodItem.price),
-        notes:           '',
-        selected_addons: [],
+        cartId, food_item: foodItem, quantity: 1,
+        unit_price: parseFloat(foodItem.price), notes: '', selected_addons: [],
       }]})
     }
     return true
   },
 
-  removeItem: (foodItemId) =>
-    set({ items: get().items.filter(i => i.food_item.id !== foodItemId) }),
+  removeItem: (cartId) =>
+    set({ items: get().items.filter(i => i.cartId !== cartId) }),
 
-  updateQty: (foodItemId, qty) => {
-    if (qty <= 0) {
-      get().removeItem(foodItemId)
-      return
-    }
-    const cartItem = get().items.find(i => i.food_item.id === foodItemId)
-    const maxQty   = cartItem?.food_item?.makeable_count ?? Infinity
-    set({ items: get().items.map(i =>
-      i.food_item.id === foodItemId
-        ? { ...i, quantity: Math.min(qty, maxQty) }
-        : i
+  updateQty: (cartId, qty) => {
+    if (qty <= 0) { get().removeItem(cartId); return }
+    const items    = get().items
+    const ci       = items.find(i => i.cartId === cartId)
+    if (!ci) return
+    const otherQty = items.filter(i => i.food_item.id === ci.food_item.id && i.cartId !== cartId)
+                          .reduce((s, i) => s + i.quantity, 0)
+    const maxQty   = ci.food_item.makeable_count ?? Infinity
+    const allowed  = Math.max(0, maxQty - otherQty)
+    set({ items: items.map(i =>
+      i.cartId === cartId ? { ...i, quantity: Math.min(qty, allowed) } : i
     )})
   },
 
-  setItemAddons: (foodItemId, addons) =>
-    set({ items: get().items.map(i =>
-      i.food_item.id === foodItemId ? { ...i, selected_addons: addons } : i
-    )}),
+  setItemAddons: (cartId, newAddons) => {
+    const items   = get().items
+    const current = items.find(i => i.cartId === cartId)
+    if (!current) return
+
+    const newCartId = makeCartId(current.food_item.id, newAddons)
+
+    if (newCartId === cartId) {
+      // No change in identity — just refresh the array (handles deselect to same sig)
+      set({ items: items.map(i => i.cartId === cartId ? { ...i, selected_addons: newAddons } : i) })
+      return
+    }
+
+    const target = items.find(i => i.cartId === newCartId)
+    if (target) {
+      // Merge into the existing matching row
+      set({ items: items
+        .filter(i => i.cartId !== cartId)
+        .map(i => i.cartId === newCartId
+          ? { ...i, quantity: i.quantity + current.quantity }
+          : i
+        )
+      })
+    } else {
+      // Rename the row's cartId + update addons
+      set({ items: items.map(i =>
+        i.cartId === cartId ? { ...i, cartId: newCartId, selected_addons: newAddons } : i
+      )})
+    }
+  },
 
   clearCart: () => set({
     items: [], customerName: '', customerPhone: '',
@@ -63,9 +103,6 @@ export const useCartStore = create((set, get) => ({
   setCustomer:      (name, phone) => set({ customerName: name, customerPhone: phone }),
   setPaymentMethod: (m)           => set({ paymentMethod: m }),
   setDiscount:      (d)           => set({ discount: d }),
-
-  getAddonCost: (item) =>
-    (item.selected_addons || []).reduce((s, a) => s + (a.is_costed ? parseFloat(a.price) : 0), 0),
 
   getSubtotal: () => get().items.reduce((s, i) => {
     const addonCost = (i.selected_addons || []).reduce((a, addon) =>

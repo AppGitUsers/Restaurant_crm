@@ -11,8 +11,9 @@ import {
 
 // ── Food card ─────────────────────────────────────────
 function FoodCard({ item, onAdd }) {
-  const cartItem = useCartStore(s => s.items.find(i => i.food_item.id === item.id))
-  const cartQty  = cartItem?.quantity || 0
+  // Sum across ALL cart rows for this food item (could be multiple rows with different addons)
+  const cartQty  = useCartStore(s => s.items.filter(i => i.food_item.id === item.id).reduce((t, i) => t + i.quantity, 0))
+  const inCart   = cartQty > 0
   const hasStock = item.is_available && item.makeable_count > 0
   const atMax    = hasStock && cartQty >= item.makeable_count
   const available = hasStock && !atMax
@@ -24,7 +25,7 @@ function FoodCard({ item, onAdd }) {
       onClick={() => available && onAdd(item)}
       className={`card-sm flex flex-col gap-2 select-none transition-all
         ${available ? 'cursor-pointer hover:border-primary-300 hover:shadow-md active:scale-[0.98]' : 'opacity-50 cursor-not-allowed'}
-        ${cartItem ? 'border-primary-300 ring-1 ring-primary-200' : ''}`}
+        ${inCart ? 'border-primary-300 ring-1 ring-primary-200' : ''}`}
     >
       <div className="relative w-full h-28 rounded-lg bg-primary-50 overflow-hidden flex items-center justify-center">
         {item.photo_url
@@ -36,9 +37,9 @@ function FoodCard({ item, onAdd }) {
             <span className="text-white text-xs font-semibold bg-red-500 px-2 py-0.5 rounded-full">{overlayLabel}</span>
           </div>
         )}
-        {cartItem && (
+        {inCart && (
           <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-primary-500 rounded-full flex items-center justify-center">
-            <span className="text-white text-xs font-bold">{cartItem.quantity}</span>
+            <span className="text-white text-xs font-bold">{cartQty}</span>
           </div>
         )}
         {hasStock && (
@@ -72,7 +73,7 @@ function AddonPickerModal({ cartItem, onSave, onClose }) {
     <Modal open onClose={onClose} title={`Add-ons — ${cartItem?.food_item?.name}`}
       footer={<>
         <button onClick={onClose} className="btn-ghost">Cancel</button>
-        <button onClick={() => { onSave(cartItem.food_item.id, selected); onClose() }} className="btn-primary">Apply</button>
+        <button onClick={() => { onSave(cartItem.cartId, selected); onClose() }} className="btn-primary">Apply</button>
       </>}
     >
       <p className="text-xs text-gray-400 mb-3">Select add-ons for this item. Costed add-ons will be charged extra.</p>
@@ -133,12 +134,15 @@ function CartPanel({ onPlaceOrder }) {
       {/* Items */}
       <div className="flex-1 overflow-y-auto space-y-2 pr-1">
         {items.map((cartItem) => {
-          const { food_item, quantity, unit_price, selected_addons } = cartItem
-          const addonCost = (selected_addons || []).reduce((s, a) => s + (a.is_costed ? parseFloat(a.price) : 0), 0)
-          const hasAddons = food_item.food_type_allow_addons && food_item.food_type_addons?.length > 0
-          const lineTotal = quantity * (unit_price + addonCost)
+          const { cartId, food_item, quantity, unit_price, selected_addons } = cartItem
+          const addonCost    = (selected_addons || []).reduce((s, a) => s + (a.is_costed ? parseFloat(a.price) : 0), 0)
+          const hasAddons    = food_item.food_type_allow_addons && food_item.food_type_addons?.length > 0
+          const lineTotal    = quantity * (unit_price + addonCost)
+          // Total qty across ALL rows for this food item (for stock-max check on + button)
+          const totalFoodQty = items.filter(i => i.food_item.id === food_item.id).reduce((s, i) => s + i.quantity, 0)
+          const atMax        = food_item.makeable_count > 0 && totalFoodQty >= food_item.makeable_count
           return (
-            <div key={food_item.id} className="p-2 rounded-lg bg-gray-50 space-y-1">
+            <div key={cartId} className="p-2 rounded-lg bg-gray-50 space-y-1">
               <div className="flex items-center gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-800 truncate">{food_item.name}</p>
@@ -147,23 +151,21 @@ function CartPanel({ onPlaceOrder }) {
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => updateQty(food_item.id, quantity - 1)} className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center hover:bg-primary-100 transition-colors">
+                  <button onClick={() => updateQty(cartId, quantity - 1)} className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center hover:bg-primary-100 transition-colors">
                     <Minus size={11} />
                   </button>
                   <span className="w-6 text-center text-sm font-semibold">{quantity}</span>
                   <button
-                    onClick={() => updateQty(food_item.id, quantity + 1)}
-                    disabled={food_item.makeable_count > 0 && quantity >= food_item.makeable_count}
+                    onClick={() => updateQty(cartId, quantity + 1)}
+                    disabled={atMax}
                     className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors
-                      ${food_item.makeable_count > 0 && quantity >= food_item.makeable_count
-                        ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
-                        : 'bg-gray-200 hover:bg-primary-100'}`}
+                      ${atMax ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-gray-200 hover:bg-primary-100'}`}
                   >
                     <Plus size={11} />
                   </button>
                 </div>
                 <p className="text-sm font-semibold text-gray-700 w-16 text-right">₹{lineTotal.toFixed(2)}</p>
-                <button onClick={() => removeItem(food_item.id)} className="text-red-300 hover:text-red-500 ml-1">
+                <button onClick={() => removeItem(cartId)} className="text-red-300 hover:text-red-500 ml-1">
                   <Trash2 size={13} />
                 </button>
               </div>
