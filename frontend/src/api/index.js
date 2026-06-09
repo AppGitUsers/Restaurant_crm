@@ -21,6 +21,12 @@ export const menuAPI = {
     update: (id, data)  => client.patch(`/menu/types/${id}/`, data),
     delete: (id)        => client.delete(`/menu/types/${id}/`),
   },
+  addons: {
+    list:   (params)    => client.get('/menu/addons/', { params }),
+    create: (data)      => client.post('/menu/addons/', data),
+    update: (id, data)  => client.patch(`/menu/addons/${id}/`, data),
+    delete: (id)        => client.delete(`/menu/addons/${id}/`),
+  },
   items: {
     list:       (params)       => client.get('/menu/items/', { params }),
     get:        (id)           => client.get(`/menu/items/${id}/`),

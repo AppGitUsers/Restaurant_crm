@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 export const useCartStore = create((set, get) => ({
-  items: [],          // [{ food_item, quantity, unit_price, notes }]
+  items: [],          // [{ food_item, quantity, unit_price, notes, selected_addons }]
   customerName:  '',
   customerPhone: '',
   paymentMethod: 'CASH',
@@ -14,7 +14,7 @@ export const useCartStore = create((set, get) => ({
     const maxQty   = foodItem.makeable_count ?? Infinity
 
     if (existing) {
-      if (existing.quantity >= maxQty) return false   // at stock limit
+      if (existing.quantity >= maxQty) return false
       set({ items: items.map(i =>
         i.food_item.id === foodItem.id
           ? { ...i, quantity: i.quantity + 1 }
@@ -23,10 +23,11 @@ export const useCartStore = create((set, get) => ({
     } else {
       if (maxQty <= 0) return false
       set({ items: [...items, {
-        food_item:  foodItem,
-        quantity:   1,
-        unit_price: parseFloat(foodItem.price),
-        notes:      '',
+        food_item:       foodItem,
+        quantity:        1,
+        unit_price:      parseFloat(foodItem.price),
+        notes:           '',
+        selected_addons: [],
       }]})
     }
     return true
@@ -49,6 +50,11 @@ export const useCartStore = create((set, get) => ({
     )})
   },
 
+  setItemAddons: (foodItemId, addons) =>
+    set({ items: get().items.map(i =>
+      i.food_item.id === foodItemId ? { ...i, selected_addons: addons } : i
+    )}),
+
   clearCart: () => set({
     items: [], customerName: '', customerPhone: '',
     paymentMethod: 'CASH', discount: 0,
@@ -58,7 +64,15 @@ export const useCartStore = create((set, get) => ({
   setPaymentMethod: (m)           => set({ paymentMethod: m }),
   setDiscount:      (d)           => set({ discount: d }),
 
-  getSubtotal: () => get().items.reduce((s, i) => s + i.quantity * i.unit_price, 0),
+  getAddonCost: (item) =>
+    (item.selected_addons || []).reduce((s, a) => s + (a.is_costed ? parseFloat(a.price) : 0), 0),
+
+  getSubtotal: () => get().items.reduce((s, i) => {
+    const addonCost = (i.selected_addons || []).reduce((a, addon) =>
+      a + (addon.is_costed ? parseFloat(addon.price) : 0), 0)
+    return s + i.quantity * (i.unit_price + addonCost)
+  }, 0),
+
   getTax: () => {
     const sub = get().getSubtotal()
     const dis = get().discount

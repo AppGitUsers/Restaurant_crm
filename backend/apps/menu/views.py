@@ -3,10 +3,22 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from apps.accounts.permissions import IsAdmin, IsAdminOrBiller
-from .models import FoodType, FoodItem, Ingredient, RecipeIngredient
+from .models import FoodType, FoodItem, Ingredient, RecipeIngredient, Addon
 from .serializers import (FoodTypeSerializer, FoodItemSerializer,
                            FoodItemWriteSerializer, IngredientSerializer,
-                           RecipeIngredientSerializer)
+                           RecipeIngredientSerializer, AddonSerializer)
+
+
+class AddonViewSet(viewsets.ModelViewSet):
+    queryset           = Addon.objects.all()
+    serializer_class   = AddonSerializer
+    filterset_fields   = ['is_active']
+    search_fields      = ['name']
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAdminOrBiller()]
+        return [IsAdmin()]
 
 
 class FoodTypeViewSet(viewsets.ModelViewSet):
@@ -32,7 +44,7 @@ class IngredientViewSet(viewsets.ModelViewSet):
 class FoodItemViewSet(viewsets.ModelViewSet):
     queryset = (FoodItem.objects
                 .select_related('food_type')
-                .prefetch_related('recipe_ingredients__ingredient__stock')
+                .prefetch_related('recipe_ingredients__ingredient__stock', 'food_type__addons')
                 .all())
     parser_classes  = [MultiPartParser, FormParser, JSONParser]
     filterset_fields = ['food_type', 'is_available', 'is_active']

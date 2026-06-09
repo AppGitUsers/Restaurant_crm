@@ -3,17 +3,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { menuAPI } from '@/api'
 import { PageLoader, Modal, SearchBar, StatusBadge, ConfirmDialog, Field, Empty } from '@/components/ui'
 import toast from 'react-hot-toast'
-import { Plus, Edit2, Trash2, ChefHat, UtensilsCrossed, Layers } from 'lucide-react'
+import { Plus, Edit2, Trash2, ChefHat, UtensilsCrossed, Layers, Sparkles } from 'lucide-react'
 
 // ── Food Type Tab ─────────────────────────────────────
 function FoodTypeTab() {
   const qc = useQueryClient()
-  const [modal, setModal] = useState(null)   // null | 'create' | 'edit'
+  const [modal, setModal] = useState(null)
   const [sel, setSel]     = useState(null)
-  const [form, setForm]   = useState({ name: '', description: '', icon: '', sort_order: 0 })
+  const [form, setForm]   = useState({ name: '', description: '', icon: '', sort_order: 0, allow_addons: false, addon_ids: [] })
   const [del, setDel]     = useState(null)
 
   const { data, isLoading } = useQuery({ queryKey: ['food-types'], queryFn: () => menuAPI.types.list().then(r => r.data.results || r.data) })
+  const { data: allAddons } = useQuery({ queryKey: ['addons'], queryFn: () => menuAPI.addons.list({ is_active: true }).then(r => r.data.results || r.data) })
 
   const save = useMutation({
     mutationFn: (d) => sel ? menuAPI.types.update(sel.id, d) : menuAPI.types.create(d),
@@ -25,11 +26,26 @@ function FoodTypeTab() {
     onSuccess: () => { qc.invalidateQueries(['food-types']); setDel(null); toast.success('Deleted') },
   })
 
-  const openCreate = () => { setSel(null); setForm({ name: '', description: '', icon: '', sort_order: 0 }); setModal('form') }
-  const openEdit   = (t)  => { setSel(t); setForm({ name: t.name, description: t.description, icon: t.icon, sort_order: t.sort_order }); setModal('form') }
+  const blankForm = { name: '', description: '', icon: '', sort_order: 0, allow_addons: false, addon_ids: [] }
+  const openCreate = () => { setSel(null); setForm(blankForm); setModal('form') }
+  const openEdit   = (t)  => {
+    setSel(t)
+    setForm({
+      name: t.name, description: t.description, icon: t.icon, sort_order: t.sort_order,
+      allow_addons: t.allow_addons || false,
+      addon_ids: (t.addons || []).map(a => a.id),
+    })
+    setModal('form')
+  }
+
+  const toggleAddon = (id) => {
+    const ids = form.addon_ids
+    setForm({ ...form, addon_ids: ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id] })
+  }
 
   if (isLoading) return <PageLoader />
-  const types = data || []
+  const types  = data || []
+  const addons = allAddons || []
 
   return (
     <div>
@@ -51,6 +67,11 @@ function FoodTypeTab() {
                 <p className="text-xs text-gray-400">{t.item_count} items</p>
               </div>
             </div>
+            {t.allow_addons && (
+              <span className="inline-flex items-center gap-1 text-xs text-primary-600 bg-primary-50 px-2 py-0.5 rounded-full w-fit">
+                <Sparkles size={10} /> Add-ons ({(t.addons || []).length})
+              </span>
+            )}
             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <button onClick={() => openEdit(t)} className="btn-ghost py-1 px-2 text-xs"><Edit2 size={12} />Edit</button>
               <button onClick={() => setDel(t)} className="btn-ghost py-1 px-2 text-xs text-red-500"><Trash2 size={12} /></button>
@@ -70,6 +91,42 @@ function FoodTypeTab() {
         <Field label="Icon (emoji)"><input className="input" value={form.icon} onChange={e => setForm({ ...form, icon: e.target.value })} placeholder="🍕" /></Field>
         <Field label="Description"><textarea className="input" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></Field>
         <Field label="Sort Order"><input type="number" className="input" value={form.sort_order} onChange={e => setForm({ ...form, sort_order: e.target.value })} /></Field>
+
+        {/* Add-ons toggle */}
+        <Field label="Allow Add-ons?">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <div
+              onClick={() => setForm({ ...form, allow_addons: !form.allow_addons })}
+              className={`relative w-10 h-5 rounded-full transition-colors ${form.allow_addons ? 'bg-primary-500' : 'bg-gray-200'}`}
+            >
+              <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.allow_addons ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </div>
+            <span className="text-sm text-gray-600">{form.allow_addons ? 'Yes — customers can add extras' : 'No add-ons for this category'}</span>
+          </label>
+        </Field>
+
+        {/* Addon checklist — only shown when allow_addons */}
+        {form.allow_addons && (
+          <Field label="Available Add-ons">
+            {addons.length === 0
+              ? <p className="text-xs text-gray-400">No add-ons created yet. Go to the Add-ons tab first.</p>
+              : (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {addons.map(a => (
+                    <label key={a.id} className={`flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition-colors
+                      ${form.addon_ids.includes(a.id) ? 'border-primary-400 bg-primary-50' : 'border-gray-100 hover:border-gray-200'}`}>
+                      <div className="flex items-center gap-2">
+                        <input type="checkbox" checked={form.addon_ids.includes(a.id)} onChange={() => toggleAddon(a.id)} className="accent-primary-500" />
+                        <span className="text-sm text-gray-700">{a.name}</span>
+                      </div>
+                      <span className="text-xs text-gray-400">{a.is_costed ? `₹${parseFloat(a.price).toFixed(2)}` : 'Free'}</span>
+                    </label>
+                  ))}
+                </div>
+              )
+            }
+          </Field>
+        )}
       </Modal>
 
       <ConfirmDialog open={!!del} onClose={() => setDel(null)} onConfirm={() => remove.mutate(del?.id)}
@@ -313,12 +370,125 @@ function FoodItemTab() {
   )
 }
 
+// ── Add-ons Tab ───────────────────────────────────────
+function AddonsTab() {
+  const qc = useQueryClient()
+  const [modal, setModal] = useState(false)
+  const [sel, setSel]     = useState(null)
+  const [form, setForm]   = useState({ name: '', is_costed: false, price: '0', is_active: true })
+  const [del, setDel]     = useState(null)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['addons'],
+    queryFn:  () => menuAPI.addons.list().then(r => r.data.results || r.data),
+  })
+
+  const save = useMutation({
+    mutationFn: (d) => sel ? menuAPI.addons.update(sel.id, d) : menuAPI.addons.create(d),
+    onSuccess:  () => { qc.invalidateQueries(['addons']); setModal(false); toast.success('Saved!') },
+    onError:    () => toast.error('Save failed'),
+  })
+  const remove = useMutation({
+    mutationFn: (id) => menuAPI.addons.delete(id),
+    onSuccess:  () => { qc.invalidateQueries(['addons']); setDel(null); toast.success('Deleted') },
+  })
+
+  const openCreate = () => { setSel(null); setForm({ name: '', is_costed: false, price: '0', is_active: true }); setModal(true) }
+  const openEdit   = (a) => { setSel(a);   setForm({ name: a.name, is_costed: a.is_costed, price: String(a.price), is_active: a.is_active }); setModal(true) }
+
+  const handleSave = () => save.mutate({
+    name: form.name, is_active: form.is_active,
+    is_costed: form.is_costed,
+    price: form.is_costed ? parseFloat(form.price) || 0 : 0,
+  })
+
+  const addons = data || []
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <h2 className="font-semibold text-gray-700">Add-ons</h2>
+          <p className="text-xs text-gray-400">{addons.length} add-ons · assign them to categories in the Categories tab</p>
+        </div>
+        <button onClick={openCreate} className="btn-primary"><Plus size={15} />Add Add-on</button>
+      </div>
+
+      <div className="table-container">
+        <table className="table">
+          <thead>
+            <tr><th>Name</th><th>Costed?</th><th>Price</th><th>Status</th><th>Actions</th></tr>
+          </thead>
+          <tbody>
+            {isLoading && <tr><td colSpan={5} className="text-center py-8 text-gray-400">Loading…</td></tr>}
+            {addons.map(a => (
+              <tr key={a.id}>
+                <td className="font-medium">{a.name}</td>
+                <td><span className={a.is_costed ? 'badge-green' : 'badge-gray'}>{a.is_costed ? 'Costed' : 'Free'}</span></td>
+                <td>{a.is_costed ? `₹${parseFloat(a.price).toFixed(2)}` : '—'}</td>
+                <td><span className={a.is_active ? 'badge-green' : 'badge-gray'}>{a.is_active ? 'Active' : 'Inactive'}</span></td>
+                <td>
+                  <div className="flex gap-1">
+                    <button onClick={() => openEdit(a)} className="btn-ghost py-1"><Edit2 size={13} /></button>
+                    <button onClick={() => setDel(a)} className="btn-ghost py-1 text-red-400"><Trash2 size={13} /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {!isLoading && addons.length === 0 && (
+              <tr><td colSpan={5}><Empty message="No add-ons yet. Create one to get started." /></td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <Modal open={modal} onClose={() => setModal(false)} title={sel ? 'Edit Add-on' : 'New Add-on'}
+        footer={<>
+          <button onClick={() => setModal(false)} className="btn-ghost">Cancel</button>
+          <button onClick={handleSave} disabled={save.isPending} className="btn-primary">Save</button>
+        </>}
+      >
+        <Field label="Add-on Name" required>
+          <input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Extra Cheese, Extra Sauce" />
+        </Field>
+        <Field label="Has Extra Cost?">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <div
+              onClick={() => setForm({ ...form, is_costed: !form.is_costed })}
+              className={`relative w-10 h-5 rounded-full transition-colors ${form.is_costed ? 'bg-primary-500' : 'bg-gray-200'}`}
+            >
+              <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.is_costed ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </div>
+            <span className="text-sm text-gray-600">{form.is_costed ? 'Charged add-on' : 'Free add-on (no extra cost)'}</span>
+          </label>
+        </Field>
+        {form.is_costed && (
+          <Field label="Price (₹)" required>
+            <input type="number" step="0.50" min="0" className="input" value={form.price}
+              onChange={e => setForm({ ...form, price: e.target.value })} />
+          </Field>
+        )}
+        <Field label="Status">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} />
+            Active
+          </label>
+        </Field>
+      </Modal>
+
+      <ConfirmDialog open={!!del} onClose={() => setDel(null)} onConfirm={() => remove.mutate(del?.id)}
+        title="Delete Add-on" message={`Delete "${del?.name}"? This will remove it from all categories.`} danger />
+    </div>
+  )
+}
+
 // ── Main MenuPage ─────────────────────────────────────
 export default function MenuPage() {
   const [tab, setTab] = useState('items')
   const tabs = [
     { id: 'items',       label: 'Food Items',   icon: <UtensilsCrossed size={15} /> },
     { id: 'types',       label: 'Categories',   icon: <Layers size={15} /> },
+    { id: 'addons',      label: 'Add-ons',      icon: <Sparkles size={15} /> },
     { id: 'ingredients', label: 'Ingredients',  icon: <ChefHat size={15} /> },
   ]
 
@@ -343,6 +513,7 @@ export default function MenuPage() {
 
       {tab === 'items'       && <FoodItemTab />}
       {tab === 'types'       && <FoodTypeTab />}
+      {tab === 'addons'      && <AddonsTab />}
       {tab === 'ingredients' && <IngredientTab />}
     </div>
   )

@@ -1,13 +1,29 @@
 from django.db import models
 
 
+class Addon(models.Model):
+    name       = models.CharField(max_length=200, unique=True)
+    is_costed  = models.BooleanField(default=False)
+    price      = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    is_active  = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
 class FoodType(models.Model):
-    name        = models.CharField(max_length=100, unique=True)
-    description = models.TextField(blank=True)
-    icon        = models.CharField(max_length=50, blank=True, help_text='Emoji or icon class')
-    sort_order  = models.PositiveIntegerField(default=0)
-    is_active   = models.BooleanField(default=True)
-    created_at  = models.DateTimeField(auto_now_add=True)
+    name         = models.CharField(max_length=100, unique=True)
+    description  = models.TextField(blank=True)
+    icon         = models.CharField(max_length=50, blank=True, help_text='Emoji or icon class')
+    sort_order   = models.PositiveIntegerField(default=0)
+    is_active    = models.BooleanField(default=True)
+    allow_addons = models.BooleanField(default=False)
+    addons       = models.ManyToManyField('Addon', blank=True, related_name='food_types')
+    created_at   = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['sort_order', 'name']

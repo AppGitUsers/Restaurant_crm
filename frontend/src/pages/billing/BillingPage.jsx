@@ -6,7 +6,7 @@ import { PageLoader, Modal, SearchBar, Empty } from '@/components/ui'
 import toast from 'react-hot-toast'
 import {
   ShoppingCart, Plus, Minus, Trash2, UtensilsCrossed,
-  CheckCircle, Printer, X, Receipt
+  CheckCircle, Printer, X, Receipt, Sparkles, Check
 } from 'lucide-react'
 
 // ── Food card ─────────────────────────────────────────
@@ -56,14 +56,67 @@ function FoodCard({ item, onAdd }) {
   )
 }
 
+// ── Addon picker modal ────────────────────────────────
+function AddonPickerModal({ cartItem, onSave, onClose }) {
+  const availableAddons = (cartItem?.food_item?.food_type_addons || []).filter(a => a.is_active)
+  const [selected, setSelected] = useState(cartItem?.selected_addons || [])
+
+  const toggle = (addon) => {
+    const exists = selected.find(a => a.id === addon.id)
+    setSelected(exists ? selected.filter(a => a.id !== addon.id) : [...selected, addon])
+  }
+  const isSelected = (id) => selected.some(a => a.id === id)
+  const totalCost  = selected.reduce((s, a) => s + (a.is_costed ? parseFloat(a.price) : 0), 0)
+
+  return (
+    <Modal open onClose={onClose} title={`Add-ons — ${cartItem?.food_item?.name}`}
+      footer={<>
+        <button onClick={onClose} className="btn-ghost">Cancel</button>
+        <button onClick={() => { onSave(cartItem.food_item.id, selected); onClose() }} className="btn-primary">Apply</button>
+      </>}
+    >
+      <p className="text-xs text-gray-400 mb-3">Select add-ons for this item. Costed add-ons will be charged extra.</p>
+      <div className="space-y-2">
+        {availableAddons.map(addon => (
+          <div key={addon.id}
+            onClick={() => toggle(addon)}
+            className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-colors
+              ${isSelected(addon.id) ? 'border-primary-400 bg-primary-50' : 'border-gray-100 hover:border-gray-200'}`}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0
+                ${isSelected(addon.id) ? 'border-primary-500 bg-primary-500' : 'border-gray-300'}`}>
+                {isSelected(addon.id) && <Check size={11} className="text-white" />}
+              </div>
+              <span className="text-sm font-medium text-gray-700">{addon.name}</span>
+            </div>
+            <span className={`text-sm font-semibold ${addon.is_costed ? 'text-primary-600' : 'text-gray-400'}`}>
+              {addon.is_costed ? `+₹${parseFloat(addon.price).toFixed(2)}` : 'Free'}
+            </span>
+          </div>
+        ))}
+        {availableAddons.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No add-ons available for this category.</p>}
+      </div>
+      {totalCost > 0 && (
+        <div className="mt-4 flex justify-between items-center text-sm font-semibold text-primary-700 bg-primary-50 rounded-xl px-4 py-2.5">
+          <span>Add-ons total (per item)</span>
+          <span>+₹{totalCost.toFixed(2)}</span>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
 // ── Cart panel ────────────────────────────────────────
 function CartPanel({ onPlaceOrder }) {
   const {
-    items, removeItem, updateQty,
+    items, removeItem, updateQty, setItemAddons,
     customerName, customerPhone, paymentMethod, discount,
     setCustomer, setPaymentMethod, setDiscount,
     getSubtotal, getTax, getTotal, clearCart,
   } = useCartStore()
+
+  const [addonTarget, setAddonTarget] = useState(null)
 
   if (items.length === 0) {
     return (
@@ -79,35 +132,76 @@ function CartPanel({ onPlaceOrder }) {
     <div className="flex flex-col h-full">
       {/* Items */}
       <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-        {items.map(({ food_item, quantity, unit_price }) => (
-          <div key={food_item.id} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-800 truncate">{food_item.name}</p>
-              <p className="text-xs text-gray-400">₹{unit_price.toFixed(2)} each</p>
+        {items.map((cartItem) => {
+          const { food_item, quantity, unit_price, selected_addons } = cartItem
+          const addonCost = (selected_addons || []).reduce((s, a) => s + (a.is_costed ? parseFloat(a.price) : 0), 0)
+          const hasAddons = food_item.food_type_allow_addons && food_item.food_type_addons?.length > 0
+          const lineTotal = quantity * (unit_price + addonCost)
+          return (
+            <div key={food_item.id} className="p-2 rounded-lg bg-gray-50 space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{food_item.name}</p>
+                  <p className="text-xs text-gray-400">
+                    ₹{unit_price.toFixed(2)}{addonCost > 0 ? ` +₹${addonCost.toFixed(2)}` : ''} each
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => updateQty(food_item.id, quantity - 1)} className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center hover:bg-primary-100 transition-colors">
+                    <Minus size={11} />
+                  </button>
+                  <span className="w-6 text-center text-sm font-semibold">{quantity}</span>
+                  <button
+                    onClick={() => updateQty(food_item.id, quantity + 1)}
+                    disabled={food_item.makeable_count > 0 && quantity >= food_item.makeable_count}
+                    className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors
+                      ${food_item.makeable_count > 0 && quantity >= food_item.makeable_count
+                        ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                        : 'bg-gray-200 hover:bg-primary-100'}`}
+                  >
+                    <Plus size={11} />
+                  </button>
+                </div>
+                <p className="text-sm font-semibold text-gray-700 w-16 text-right">₹{lineTotal.toFixed(2)}</p>
+                <button onClick={() => removeItem(food_item.id)} className="text-red-300 hover:text-red-500 ml-1">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+
+              {/* Selected add-ons chips */}
+              {selected_addons?.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {selected_addons.map(a => (
+                    <span key={a.id} className="text-xs bg-primary-50 text-primary-600 px-2 py-0.5 rounded-full">
+                      {a.name}{a.is_costed ? ` +₹${parseFloat(a.price).toFixed(2)}` : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Add-ons button */}
+              {hasAddons && (
+                <button
+                  onClick={() => setAddonTarget(cartItem)}
+                  className="flex items-center gap-1 text-xs text-primary-500 hover:text-primary-700 transition-colors"
+                >
+                  <Sparkles size={11} />
+                  {selected_addons?.length ? 'Edit add-ons' : 'Add add-ons'}
+                </button>
+              )}
             </div>
-            <div className="flex items-center gap-1">
-              <button onClick={() => updateQty(food_item.id, quantity - 1)} className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center hover:bg-primary-100 transition-colors">
-                <Minus size={11} />
-              </button>
-              <span className="w-6 text-center text-sm font-semibold">{quantity}</span>
-              <button
-                onClick={() => updateQty(food_item.id, quantity + 1)}
-                disabled={food_item.makeable_count > 0 && quantity >= food_item.makeable_count}
-                className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors
-                  ${food_item.makeable_count > 0 && quantity >= food_item.makeable_count
-                    ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
-                    : 'bg-gray-200 hover:bg-primary-100'}`}
-              >
-                <Plus size={11} />
-              </button>
-            </div>
-            <p className="text-sm font-semibold text-gray-700 w-16 text-right">₹{(quantity * unit_price).toFixed(2)}</p>
-            <button onClick={() => removeItem(food_item.id)} className="text-red-300 hover:text-red-500 ml-1">
-              <Trash2 size={13} />
-            </button>
-          </div>
-        ))}
+          )
+        })}
       </div>
+
+      {/* Add-on picker modal */}
+      {addonTarget && (
+        <AddonPickerModal
+          cartItem={addonTarget}
+          onSave={setItemAddons}
+          onClose={() => setAddonTarget(null)}
+        />
+      )}
 
       {/* Customer */}
       <div className="divider" />
@@ -183,9 +277,12 @@ function BillModal({ order, onClose }) {
 
       <div className="space-y-2 text-sm">
         {order.items.map((item, i) => (
-          <div key={i} className="flex justify-between">
-            <span className="text-gray-700">{item.food_item_name} × {item.quantity}</span>
-            <span className="font-medium">₹{parseFloat(item.line_total).toFixed(2)}</span>
+          <div key={i}>
+            <div className="flex justify-between">
+              <span className="text-gray-700">{item.food_item_name} × {item.quantity}</span>
+              <span className="font-medium">₹{parseFloat(item.line_total).toFixed(2)}</span>
+            </div>
+            {item.notes && <p className="text-xs text-gray-400 mt-0.5">{item.notes}</p>}
           </div>
         ))}
         <div className="border-t border-gray-200 pt-2 space-y-1">
@@ -238,11 +335,16 @@ export default function BillingPage() {
         payment_method: paymentMethod,
         discount,
         tax_percent: taxPercent,
-        items: items.map(i => ({
-          food_item:  i.food_item.id,
-          quantity:   i.quantity,
-          unit_price: i.unit_price,
-        })),
+        items: items.map(i => {
+          const addonCost = (i.selected_addons || []).reduce((s, a) => s + (a.is_costed ? parseFloat(a.price) : 0), 0)
+          return {
+            food_item:        i.food_item.id,
+            quantity:         i.quantity,
+            unit_price:       i.unit_price,
+            addon_unit_price: addonCost,
+            notes:            i.selected_addons?.length ? `Add-ons: ${i.selected_addons.map(a => a.name).join(', ')}` : '',
+          }
+        }),
       }
       const { data: order } = await billingAPI.orders.create(payload)
       const { data: paid  } = await billingAPI.orders.pay(order.id, { payment_method: paymentMethod })
