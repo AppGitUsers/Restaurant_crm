@@ -58,3 +58,6 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             OrderItem.objects.create(order=order, **item_data)
         order.recalculate_totals()
         return order
+
+    def to_representation(self, instance):
+        return OrderSerializer(instance).data

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { menuAPI, billingAPI } from '@/api'
+import { menuAPI, billingAPI, customersAPI } from '@/api'
 import { useCartStore } from '@/store/cartStore'
 import { PageLoader, Modal, Empty } from '@/components/ui'
 import toast from 'react-hot-toast'
@@ -301,6 +301,77 @@ function CustomizeModal({ onClose, onAdd }) {
   )
 }
 
+// ── Customer fields with phone lookup ────────────────
+function CustomerFields({ customerName, customerPhone, setCustomer }) {
+  const phoneReady = customerPhone.replace(/\D/g, '').length >= 10
+
+  const { data: lookupData, isFetching } = useQuery({
+    queryKey:  ['customer-phone-lookup', customerPhone],
+    queryFn:   () => customersAPI.list({ phone: customerPhone }).then(r => r.data.results || r.data),
+    enabled:   phoneReady,
+    staleTime: 30_000,
+  })
+
+  // Exact-match filter returns only the right customer (or empty)
+  const matched = lookupData?.[0] || null
+
+  // Auto-fill name when a match is found and name field is empty
+  useEffect(() => {
+    if (matched && !customerName) {
+      setCustomer(matched.name, customerPhone)
+    }
+  }, [matched?.id])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const visits       = matched?.total_visits ?? 0
+  const totalSpent   = matched ? parseFloat(matched.total_spent || 0) : 0
+  const isReturning  = visits > 0
+
+  return (
+    <div className="mt-3 pt-3 space-y-2 border-t border-gray-100">
+      {/* Phone first — triggers lookup */}
+      <div className="relative">
+        <input
+          className="input-sm pr-8"
+          placeholder="Phone (optional)"
+          value={customerPhone}
+          onChange={e => setCustomer(customerName, e.target.value)}
+        />
+        {phoneReady && isFetching && (
+          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 text-xs animate-pulse">…</span>
+        )}
+      </div>
+
+      {/* Returning customer badge */}
+      {matched && (
+        <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-1.5">
+          <div>
+            <p className="text-xs font-semibold text-green-700">{matched.name}</p>
+            <p className="text-xs text-green-500">
+              {isReturning ? `${visits} visit${visits > 1 ? 's' : ''} • ₹${totalSpent.toFixed(0)} spent` : 'First visit'}
+              {' • '}This will be visit #{visits + 1}
+            </p>
+          </div>
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+            matched.frequency_tag === 'HIGH'   ? 'bg-amber-100 text-amber-700' :
+            matched.frequency_tag === 'MEDIUM' ? 'bg-blue-100 text-blue-600'  :
+                                                  'bg-green-100 text-green-600'
+          }`}>
+            {matched.frequency_tag === 'HIGH' ? '★ VIP' : matched.frequency_tag === 'MEDIUM' ? 'Regular' : 'New'}
+          </span>
+        </div>
+      )}
+
+      {/* Name field */}
+      <input
+        className="input-sm"
+        placeholder="Customer name (optional)"
+        value={customerName}
+        onChange={e => setCustomer(e.target.value, customerPhone)}
+      />
+    </div>
+  )
+}
+
 // ── Cart panel ────────────────────────────────────────
 function CartPanel({ onPlaceOrder }) {
   const {
@@ -450,10 +521,13 @@ function CartPanel({ onPlaceOrder }) {
         />
       )}
 
-      <div className="divider" />
-      <div className="space-y-2">
-        <input className="input-sm" placeholder="Customer name (optional)" value={customerName} onChange={e => setCustomer(e.target.value, customerPhone)} />
-        <input className="input-sm" placeholder="Phone (optional)" value={customerPhone} onChange={e => setCustomer(customerName, e.target.value)} />
+      <CustomerFields
+        customerName={customerName}
+        customerPhone={customerPhone}
+        setCustomer={setCustomer}
+      />
+
+      <div className="mt-2 space-y-2">
         <div className="flex gap-2">
           <select className="select text-xs py-1.5 flex-1" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
             <option value="CASH">Cash</option>
@@ -613,7 +687,12 @@ export default function BillingPage() {
       qc.invalidateQueries(['billing-items'])
       toast.success('Order placed and paid!')
     },
-    onError: () => toast.error('Order failed. Check stock availability.'),
+    onError: (err) => {
+      const msg = err?.response?.data?.detail
+        || Object.values(err?.response?.data || {})[0]
+        || 'Order failed. Please try again.'
+      toast.error(typeof msg === 'string' ? msg : JSON.stringify(msg))
+    },
   })
 
   const items     = data || []

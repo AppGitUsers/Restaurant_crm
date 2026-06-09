@@ -9,7 +9,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
     queryset           = Customer.objects.prefetch_related('visits').all()
     serializer_class   = CustomerSerializer
     permission_classes = [IsAdminOrBiller]
-    filterset_fields   = ['frequency_tag']
+    filterset_fields   = ['frequency_tag', 'phone']
     search_fields      = ['name', 'phone', 'email']
     ordering_fields    = ['total_visits', 'total_spent', 'created_at']
 
