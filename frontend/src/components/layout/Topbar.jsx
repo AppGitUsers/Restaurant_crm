@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Bell, LogOut, User } from 'lucide-react'
+import { Bell, LogOut, User, Clock } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { authAPI } from '@/api'
 import toast from 'react-hot-toast'
@@ -26,6 +26,15 @@ export default function Topbar() {
         </h1>
       </div>
       <div className="flex items-center gap-3">
+        <button
+          onClick={() => window.open('/kiosk', '_blank')}
+          title="Open Attendance Kiosk"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-50 text-primary-600
+                     hover:bg-primary-100 transition-colors text-sm font-medium"
+        >
+          <Clock size={15} />
+          Kiosk
+        </button>
         <button className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors">
           <Bell size={18} className="text-gray-500" />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-gold-300 rounded-full" />

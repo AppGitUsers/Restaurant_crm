@@ -16,7 +16,8 @@ import StaffPage      from '@/pages/staff/StaffPage'
 import CustomersPage  from '@/pages/customers/CustomersPage'
 
 // Billing pages
-import BillingPage    from '@/pages/billing/BillingPage'
+import BillingPage       from '@/pages/billing/BillingPage'
+import AttendanceKiosk   from '@/pages/attendance/AttendanceKiosk'
 
 function RequireAuth({ children, allowedRoles }) {
   const { user, token } = useAuthStore()
@@ -52,6 +53,7 @@ export default function App() {
         <Route path="finance"        element={<FinancePage />} />
         <Route path="staff"          element={<StaffPage />} />
         <Route path="customers"      element={<CustomersPage />} />
+        <Route path="kiosk"          element={<AttendanceKiosk />} />
       </Route>
 
       {/* Biller routes */}
@@ -60,7 +62,8 @@ export default function App() {
           <BillerLayout />
         </RequireAuth>
       }>
-        <Route index element={<BillingPage />} />
+        <Route index             element={<BillingPage />} />
+        <Route path="kiosk"      element={<AttendanceKiosk />} />
       </Route>
 
       {/* Fallback */}

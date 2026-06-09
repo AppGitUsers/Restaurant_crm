@@ -24,10 +24,15 @@ class ShiftViewSet(viewsets.ModelViewSet):
 class EmployeeViewSet(viewsets.ModelViewSet):
     queryset = Employee.objects.select_related('department', 'shift').all()
     serializer_class   = EmployeeSerializer
-    permission_classes = [IsAdmin]
     parser_classes     = [MultiPartParser, FormParser, JSONParser]
     filterset_fields   = ['department', 'shift', 'employment_type', 'is_active']
     search_fields      = ['name', 'phone', 'email']
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            from apps.accounts.permissions import IsAdminOrBiller
+            return [IsAdminOrBiller()]
+        return [IsAdmin()]
 
     @action(detail=True, methods=['get'])
     def attendance_calendar(self, request, pk=None):
@@ -49,10 +54,15 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 class AttendanceViewSet(viewsets.ModelViewSet):
     queryset = Attendance.objects.select_related('employee').all()
     serializer_class   = AttendanceSerializer
-    permission_classes = [IsAdmin]
     filterset_fields   = ['employee', 'date', 'status']
     search_fields      = ['employee__name']
     ordering_fields    = ['date']
+
+    def get_permissions(self):
+        from apps.accounts.permissions import IsAdminOrBiller
+        if self.action in ('list', 'retrieve', 'create', 'partial_update', 'update'):
+            return [IsAdminOrBiller()]
+        return [IsAdmin()]
 
     @action(detail=False, methods=['get'])
     def by_date(self, request):

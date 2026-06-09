@@ -316,10 +316,13 @@ function EmployeeTab() {
               <div className="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center overflow-hidden">
                 {emp.photo_url ? <img src={emp.photo_url} alt={emp.name} className="w-full h-full object-cover" /> : <Users size={22} className="text-primary-400" />}
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <p className="font-semibold text-gray-800">{emp.name}</p>
                 <p className="text-xs text-gray-400">{emp.phone}</p>
               </div>
+              <span className="text-xs font-mono bg-gray-100 text-gray-400 px-2 py-0.5 rounded-lg flex-shrink-0">
+                #{emp.id}
+              </span>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {emp.department_name && <span className="badge-gray text-xs"><Building2 size={10} className="inline mr-0.5" />{emp.department_name}</span>}

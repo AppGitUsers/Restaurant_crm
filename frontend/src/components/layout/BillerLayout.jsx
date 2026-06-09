@@ -1,7 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, UtensilsCrossed } from 'lucide-react'
+import { LogOut, UtensilsCrossed, Clock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { authAPI } from '@/api'
 
@@ -30,16 +30,23 @@ export default function BillerLayout() {
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-primary-200 text-sm">
-            {user?.first_name || user?.username}
-          </span>
+          <span className="text-primary-200 text-sm">{user?.first_name || user?.username}</span>
+          <button
+            onClick={() => window.open('/billing/kiosk', '_blank')}
+            title="Open Attendance Kiosk"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20
+                       text-white text-sm font-medium transition-colors"
+          >
+            <Clock size={14} />
+            Kiosk
+          </button>
           <button onClick={handleLogout} className="flex items-center gap-1.5 text-primary-200 hover:text-white text-sm transition-colors">
             <LogOut size={16} />
             Logout
           </button>
         </div>
       </header>
-      <main className="flex-1 overflow-hidden">
+      <main className="flex-1 overflow-y-auto">
         <Outlet />
       </main>
     </div>
