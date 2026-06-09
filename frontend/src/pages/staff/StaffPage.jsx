@@ -1,10 +1,23 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { staffAPI } from '@/api'
+import { staffAPI, authAPI } from '@/api'
 import { PageLoader, Modal, SearchBar, StatusBadge, ConfirmDialog, Field, Empty } from '@/components/ui'
 import toast from 'react-hot-toast'
-import { Plus, Edit2, Trash2, Calendar, CreditCard, Users, Clock, Building2 } from 'lucide-react'
+import {
+  Plus, Edit2, Trash2, Calendar, CreditCard, Users,
+  Clock, Building2, KeyRound, Shield,
+} from 'lucide-react'
 import { format, getDaysInMonth, startOfMonth } from 'date-fns'
+
+const ALL_DAYS = [
+  { code: 'MON', label: 'Mon' },
+  { code: 'TUE', label: 'Tue' },
+  { code: 'WED', label: 'Wed' },
+  { code: 'THU', label: 'Thu' },
+  { code: 'FRI', label: 'Fri' },
+  { code: 'SAT', label: 'Sat' },
+  { code: 'SUN', label: 'Sun' },
+]
 
 // ── Attendance Calendar ───────────────────────────────
 function AttendanceCalendarModal({ employee, onClose }) {
@@ -21,10 +34,14 @@ function AttendanceCalendarModal({ employee, onClose }) {
   const attMap = {}
   ;(data || []).forEach(a => { attMap[a.date] = a })
 
-  const days    = getDaysInMonth(new Date(year, month - 1))
-  const start   = startOfMonth(new Date(year, month - 1)).getDay()
-
-  const colorMap = { PRESENT: 'bg-primary-400 text-white', ABSENT: 'bg-red-400 text-white', HALF: 'bg-gold-300 text-white', LEAVE: 'bg-gray-300 text-white' }
+  const days  = getDaysInMonth(new Date(year, month - 1))
+  const start = startOfMonth(new Date(year, month - 1)).getDay()
+  const colorMap = {
+    PRESENT: 'bg-primary-400 text-white',
+    ABSENT:  'bg-red-400 text-white',
+    HALF:    'bg-gold-300 text-white',
+    LEAVE:   'bg-gray-300 text-white',
+  }
 
   return (
     <Modal open={!!employee} onClose={onClose} title={`Attendance Calendar — ${employee?.name}`} size="lg">
@@ -38,7 +55,6 @@ function AttendanceCalendarModal({ employee, onClose }) {
           {[2023, 2024, 2025, 2026].map(y => <option key={y}>{y}</option>)}
         </select>
       </div>
-
       <div className="grid grid-cols-7 gap-1 mb-2">
         {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
           <div key={d} className="text-center text-xs font-semibold text-gray-400 py-1">{d}</div>
@@ -59,7 +75,6 @@ function AttendanceCalendarModal({ employee, onClose }) {
           )
         })}
       </div>
-
       <div className="flex gap-3 mt-4 text-xs">
         {Object.entries(colorMap).map(([k, cls]) => (
           <div key={k} className="flex items-center gap-1">
@@ -69,6 +84,200 @@ function AttendanceCalendarModal({ employee, onClose }) {
         ))}
       </div>
     </Modal>
+  )
+}
+
+// ── Shift Tab ─────────────────────────────────────────
+function ShiftTab() {
+  const qc = useQueryClient()
+  const [modal, setModal] = useState(false)
+  const [sel, setSel]     = useState(null)
+  const [del, setDel]     = useState(null)
+
+  const emptyForm = {
+    name: '', start_time: '', end_time: '',
+    late_threshold: '15', ot_threshold: '30',
+    days: ['MON', 'TUE', 'WED', 'THU', 'FRI'],
+    notes: '', is_active: true,
+  }
+  const [form, setForm] = useState(emptyForm)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['shifts'],
+    queryFn:  () => staffAPI.shifts.list().then(r => r.data.results || r.data),
+  })
+
+  const save   = useMutation({
+    mutationFn: d => sel ? staffAPI.shifts.update(sel.id, d) : staffAPI.shifts.create(d),
+    onSuccess:  () => { qc.invalidateQueries(['shifts']); setModal(false); toast.success('Shift saved') },
+  })
+  const remove = useMutation({
+    mutationFn: id => staffAPI.shifts.delete(id),
+    onSuccess:  () => { qc.invalidateQueries(['shifts']); setDel(null); toast.success('Shift deleted') },
+  })
+
+  const openCreate = () => { setSel(null); setForm(emptyForm); setModal(true) }
+  const openEdit   = s => {
+    setSel(s)
+    setForm({
+      name: s.name, start_time: s.start_time, end_time: s.end_time,
+      late_threshold: String(s.late_threshold), ot_threshold: String(s.ot_threshold),
+      days: s.days_list || [],
+      notes: s.notes || '', is_active: s.is_active,
+    })
+    setModal(true)
+  }
+
+  const toggleDay = code => {
+    setForm(f => ({
+      ...f,
+      days: f.days.includes(code) ? f.days.filter(d => d !== code) : [...f.days, code],
+    }))
+  }
+
+  const handleSubmit = () => {
+    save.mutate({ ...form, days: form.days.join(',') })
+  }
+
+  const shifts = data || []
+
+  return (
+    <div>
+      <div className="flex justify-end mb-4">
+        <button onClick={openCreate} className="btn-primary"><Plus size={15} />Add Shift</button>
+      </div>
+      <div className="table-container">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Shift Name</th>
+              <th>Time</th>
+              <th>Hours</th>
+              <th>Days</th>
+              <th>Late After</th>
+              <th>OT After</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && <tr><td colSpan={8} className="text-center py-8 text-gray-400">Loading…</td></tr>}
+            {shifts.map(s => (
+              <tr key={s.id}>
+                <td className="font-semibold">{s.name}</td>
+                <td className="font-mono text-sm">
+                  {s.start_time} – {s.end_time}
+                </td>
+                <td>{s.hours}h</td>
+                <td>
+                  <div className="flex flex-wrap gap-0.5">
+                    {(s.days_list || []).map(d => (
+                      <span key={d} className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary-50 text-primary-600">{d}</span>
+                    ))}
+                  </div>
+                </td>
+                <td className="text-sm text-gray-500">{s.late_threshold} min</td>
+                <td className="text-sm text-gray-500">{s.ot_threshold} min</td>
+                <td>
+                  <span className={s.is_active ? 'badge-green' : 'badge-gray'}>
+                    {s.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                </td>
+                <td>
+                  <div className="flex gap-1">
+                    <button onClick={() => openEdit(s)} className="btn-ghost py-1"><Edit2 size={13} /></button>
+                    <button onClick={() => setDel(s)} className="btn-ghost py-1 text-red-400"><Trash2 size={13} /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {!isLoading && shifts.length === 0 && (
+              <tr><td colSpan={8}><Empty message="No shifts created yet" /></td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <Modal open={modal} onClose={() => setModal(false)} title={sel ? 'Edit Shift' : 'Add Shift'} size="lg"
+        footer={
+          <>
+            <button onClick={() => setModal(false)} className="btn-ghost">Cancel</button>
+            <button onClick={handleSubmit} disabled={save.isPending} className="btn-primary">Save</button>
+          </>
+        }>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <Field label="Shift Name" required>
+              <input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+            </Field>
+          </div>
+          <Field label="Start Time" required>
+            <input type="time" className="input" value={form.start_time}
+              onChange={e => setForm({ ...form, start_time: e.target.value })} />
+          </Field>
+          <Field label="End Time" required>
+            <input type="time" className="input" value={form.end_time}
+              onChange={e => setForm({ ...form, end_time: e.target.value })} />
+          </Field>
+          <Field label="Late Threshold (minutes)">
+            <input type="number" min="0" className="input" value={form.late_threshold}
+              onChange={e => setForm({ ...form, late_threshold: e.target.value })} />
+          </Field>
+          <Field label="OT Threshold (minutes)">
+            <input type="number" min="0" className="input" value={form.ot_threshold}
+              onChange={e => setForm({ ...form, ot_threshold: e.target.value })} />
+          </Field>
+        </div>
+
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-2">
+            <label className="label">Working Days</label>
+            <div className="flex gap-2 text-xs">
+              <button type="button" className="text-primary-500 hover:underline"
+                onClick={() => setForm(f => ({ ...f, days: ALL_DAYS.map(d => d.code) }))}>
+                All Days
+              </button>
+              <button type="button" className="text-primary-500 hover:underline"
+                onClick={() => setForm(f => ({ ...f, days: ['MON','TUE','WED','THU','FRI'] }))}>
+                Weekdays
+              </button>
+              <button type="button" className="text-gray-400 hover:underline"
+                onClick={() => setForm(f => ({ ...f, days: [] }))}>
+                Clear
+              </button>
+            </div>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {ALL_DAYS.map(d => (
+              <button key={d.code} type="button"
+                onClick={() => toggleDay(d.code)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors
+                  ${form.days.includes(d.code)
+                    ? 'bg-primary-500 text-white border-primary-500'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-primary-300'}`}>
+                {d.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-3">
+          <Field label="Notes">
+            <textarea className="input" rows={2} value={form.notes}
+              onChange={e => setForm({ ...form, notes: e.target.value })} />
+          </Field>
+        </div>
+
+        <div className="mt-3 flex items-center gap-2">
+          <input type="checkbox" id="shift-active" checked={form.is_active}
+            onChange={e => setForm({ ...form, is_active: e.target.checked })} className="w-4 h-4 accent-primary-500" />
+          <label htmlFor="shift-active" className="text-sm text-gray-600">Active</label>
+        </div>
+      </Modal>
+
+      <ConfirmDialog open={!!del} onClose={() => setDel(null)} onConfirm={() => remove.mutate(del?.id)}
+        title="Delete Shift" message={`Delete "${del?.name}"? Employees assigned will lose their shift.`} danger />
+    </div>
   )
 }
 
@@ -144,7 +353,7 @@ function EmployeeTab() {
           <Field label="Shift">
             <select className="select" value={form.shift} onChange={e => setForm({ ...form, shift: e.target.value })}>
               <option value="">None</option>
-              {(shifts || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {(shifts || []).map(s => <option key={s.id} value={s.id}>{s.name} ({s.start_time}–{s.end_time})</option>)}
             </select>
           </Field>
           <Field label="Employment Type">
@@ -182,7 +391,7 @@ function AttendanceTab() {
     onError: e => toast.error(e.response?.data?.non_field_errors?.[0] || 'Already recorded for this date'),
   })
 
-  const STATUS = ['PRESENT','ABSENT','HALF','LEAVE']
+  const STATUS  = ['PRESENT','ABSENT','HALF','LEAVE']
   const records = data || []
 
   return (
@@ -308,30 +517,236 @@ function PaymentsTab() {
   )
 }
 
+// ── Credentials Tab ───────────────────────────────────
+function CredentialsTab() {
+  const qc = useQueryClient()
+  const [modal, setModal]   = useState(false)
+  const [sel, setSel]       = useState(null)
+  const [del, setDel]       = useState(null)
+  const [showPwd, setShowPwd] = useState(false)
+  const [confirmPwd, setConfirmPwd] = useState('')
+
+  const emptyForm = {
+    username: '', password: '', role: 'BILLER',
+    linked_employee: '', is_active: true,
+  }
+  const [form, setForm] = useState(emptyForm)
+
+  const { data: allUsers, isLoading } = useQuery({
+    queryKey: ['staff-users'],
+    queryFn:  () => authAPI.users.list().then(r => r.data.results || r.data),
+  })
+  const { data: emps } = useQuery({
+    queryKey: ['employees'],
+    queryFn:  () => staffAPI.employees.list().then(r => r.data.results || r.data),
+  })
+
+  const staffUsers = (allUsers || []).filter(u => u.role === 'BILLER' || u.role === 'KITCHEN')
+
+  const save = useMutation({
+    mutationFn: d => sel ? authAPI.users.update(sel.id, d) : authAPI.users.create(d),
+    onSuccess:  () => {
+      qc.invalidateQueries(['staff-users'])
+      setModal(false)
+      toast.success(sel ? 'Credentials updated' : 'User created')
+    },
+    onError: e => toast.error(e.response?.data?.username?.[0] || 'Failed to save'),
+  })
+  const remove = useMutation({
+    mutationFn: id => authAPI.users.delete(id),
+    onSuccess:  () => { qc.invalidateQueries(['staff-users']); setDel(null); toast.success('User deleted') },
+  })
+
+  const openCreate = () => {
+    setSel(null)
+    setForm(emptyForm)
+    setConfirmPwd('')
+    setShowPwd(false)
+    setModal(true)
+  }
+  const openEdit = u => {
+    setSel(u)
+    setForm({
+      username: u.username, password: '',
+      role: u.role, linked_employee: u.linked_employee || '',
+      is_active: u.is_active,
+    })
+    setConfirmPwd('')
+    setShowPwd(false)
+    setModal(true)
+  }
+
+  const handleSubmit = () => {
+    if (!sel && form.password !== confirmPwd) {
+      toast.error('Passwords do not match')
+      return
+    }
+    if (!sel && form.password.length < 6) {
+      toast.error('Password must be at least 6 characters')
+      return
+    }
+    const payload = {
+      username:        form.username,
+      role:            form.role,
+      linked_employee: form.linked_employee || null,
+      is_active:       form.is_active,
+    }
+    if (form.password) payload.password = form.password
+    save.mutate(payload)
+  }
+
+  const roleColor = role => role === 'KITCHEN' ? 'badge-gold' : 'badge-blue'
+
+  return (
+    <div>
+      <div className="flex justify-end mb-4">
+        <button onClick={openCreate} className="btn-primary"><Plus size={15} />Add Staff User</button>
+      </div>
+      <div className="table-container">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Role</th>
+              <th>Linked Employee</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && <tr><td colSpan={5} className="text-center py-8 text-gray-400">Loading…</td></tr>}
+            {staffUsers.map(u => (
+              <tr key={u.id}>
+                <td className="font-medium font-mono">{u.username}</td>
+                <td><span className={`${roleColor(u.role)} text-xs`}>{u.role}</span></td>
+                <td>{u.linked_employee_name || <span className="text-gray-300">—</span>}</td>
+                <td>
+                  <span className={u.is_active ? 'badge-green' : 'badge-red'}>
+                    {u.is_active ? 'Active' : 'Disabled'}
+                  </span>
+                </td>
+                <td>
+                  <div className="flex gap-1">
+                    <button onClick={() => openEdit(u)} className="btn-ghost py-1 text-xs"><Edit2 size={13} />Edit</button>
+                    <button onClick={() => setDel(u)} className="btn-ghost py-1 text-xs text-red-400"><Trash2 size={13} /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {!isLoading && staffUsers.length === 0 && (
+              <tr><td colSpan={5}><Empty message="No staff users yet" /></td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <Modal open={modal} onClose={() => setModal(false)} title={sel ? 'Edit Staff User' : 'Create Staff User'} size="md"
+        footer={
+          <>
+            <button onClick={() => setModal(false)} className="btn-ghost">Cancel</button>
+            <button onClick={handleSubmit} disabled={save.isPending} className="btn-primary">
+              {sel ? 'Update' : 'Create'}
+            </button>
+          </>
+        }>
+        <div className="space-y-3">
+          <Field label="Username" required>
+            <input className="input" value={form.username}
+              onChange={e => setForm({ ...form, username: e.target.value })} />
+          </Field>
+
+          <Field label={sel ? 'New Password (leave blank to keep)' : 'Password'} required={!sel}>
+            <div className="relative">
+              <input
+                type={showPwd ? 'text' : 'password'}
+                className="input pr-10"
+                value={form.password}
+                onChange={e => setForm({ ...form, password: e.target.value })}
+                placeholder={sel ? 'Leave blank to keep current' : 'Min 6 characters'}
+              />
+              <button type="button" onClick={() => setShowPwd(p => !p)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">
+                {showPwd ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </Field>
+
+          {!sel && (
+            <Field label="Confirm Password" required>
+              <input
+                type={showPwd ? 'text' : 'password'}
+                className="input"
+                value={confirmPwd}
+                onChange={e => setConfirmPwd(e.target.value)}
+                placeholder="Re-enter password"
+              />
+            </Field>
+          )}
+
+          <Field label="Role">
+            <select className="select" value={form.role}
+              onChange={e => setForm({ ...form, role: e.target.value })}>
+              <option value="BILLER">Biller</option>
+              <option value="KITCHEN">Kitchen</option>
+            </select>
+          </Field>
+
+          <Field label="Link to Employee (optional)">
+            <select className="select" value={form.linked_employee}
+              onChange={e => setForm({ ...form, linked_employee: e.target.value })}>
+              <option value="">— None —</option>
+              {(emps || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          </Field>
+
+          <div className="flex items-center gap-2 pt-1">
+            <input type="checkbox" id="user-active" checked={form.is_active}
+              onChange={e => setForm({ ...form, is_active: e.target.checked })}
+              className="w-4 h-4 accent-primary-500" />
+            <label htmlFor="user-active" className="text-sm text-gray-600">Account active</label>
+          </div>
+        </div>
+      </Modal>
+
+      <ConfirmDialog open={!!del} onClose={() => setDel(null)} onConfirm={() => remove.mutate(del?.id)}
+        title="Delete User" message={`Delete user "${del?.username}"? This cannot be undone.`} danger />
+    </div>
+  )
+}
+
+// ── Main StaffPage ────────────────────────────────────
 export default function StaffPage() {
   const [tab, setTab] = useState('employees')
   const tabs = [
-    { id: 'employees',  label: 'Employees',  icon: <Users size={15} /> },
-    { id: 'attendance', label: 'Attendance', icon: <Calendar size={15} /> },
-    { id: 'payments',   label: 'Payments',   icon: <CreditCard size={15} /> },
+    { id: 'employees',   label: 'Employees',   icon: <Users size={15} /> },
+    { id: 'shifts',      label: 'Shifts',       icon: <Clock size={15} /> },
+    { id: 'attendance',  label: 'Attendance',   icon: <Calendar size={15} /> },
+    { id: 'payments',    label: 'Payments',     icon: <CreditCard size={15} /> },
+    { id: 'credentials', label: 'Credentials',  icon: <KeyRound size={15} /> },
   ]
 
   return (
     <div>
       <div className="page-header">
-        <div><h1 className="page-title">Staff Management</h1><p className="page-subtitle">Employees, attendance, shifts, and payroll</p></div>
+        <div>
+          <h1 className="page-title">Staff Management</h1>
+          <p className="page-subtitle">Employees, shifts, attendance, and payroll</p>
+        </div>
       </div>
-      <div className="flex gap-1 mb-6 bg-gray-100 rounded-xl p-1 w-fit">
+      <div className="flex gap-1 mb-6 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === t.id ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
+              ${tab === t.id ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
             {t.icon}{t.label}
           </button>
         ))}
       </div>
-      {tab === 'employees'  && <EmployeeTab />}
-      {tab === 'attendance' && <AttendanceTab />}
-      {tab === 'payments'   && <PaymentsTab />}
+      {tab === 'employees'   && <EmployeeTab />}
+      {tab === 'shifts'      && <ShiftTab />}
+      {tab === 'attendance'  && <AttendanceTab />}
+      {tab === 'payments'    && <PaymentsTab />}
+      {tab === 'credentials' && <CredentialsTab />}
     </div>
   )
 }

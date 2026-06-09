@@ -11,34 +11,39 @@ import {
 
 // ── Food card ─────────────────────────────────────────
 function FoodCard({ item, onAdd }) {
-  const inCart = useCartStore(s => s.items.find(i => i.food_item.id === item.id))
-  const available = item.is_available && item.makeable_count > 0
+  const cartItem = useCartStore(s => s.items.find(i => i.food_item.id === item.id))
+  const cartQty  = cartItem?.quantity || 0
+  const hasStock = item.is_available && item.makeable_count > 0
+  const atMax    = hasStock && cartQty >= item.makeable_count
+  const available = hasStock && !atMax
+
+  const overlayLabel = !hasStock ? 'Out of Stock' : 'Max Added'
 
   return (
     <div
       onClick={() => available && onAdd(item)}
-      className={`card-sm flex flex-col gap-2 cursor-pointer select-none transition-all
-        ${available ? 'hover:border-primary-300 hover:shadow-md active:scale-[0.98]' : 'opacity-50 cursor-not-allowed'}
-        ${inCart ? 'border-primary-300 ring-1 ring-primary-200' : ''}`}
+      className={`card-sm flex flex-col gap-2 select-none transition-all
+        ${available ? 'cursor-pointer hover:border-primary-300 hover:shadow-md active:scale-[0.98]' : 'opacity-50 cursor-not-allowed'}
+        ${cartItem ? 'border-primary-300 ring-1 ring-primary-200' : ''}`}
     >
       <div className="relative w-full h-28 rounded-lg bg-primary-50 overflow-hidden flex items-center justify-center">
         {item.photo_url
           ? <img src={item.photo_url} alt={item.name} className="w-full h-full object-cover" />
           : <UtensilsCrossed size={28} className="text-primary-200" />
         }
-        {!available && (
+        {(!available) && (
           <div className="absolute inset-0 bg-gray-900/50 flex items-center justify-center rounded-lg">
-            <span className="text-white text-xs font-semibold bg-red-500 px-2 py-0.5 rounded-full">Out of Stock</span>
+            <span className="text-white text-xs font-semibold bg-red-500 px-2 py-0.5 rounded-full">{overlayLabel}</span>
           </div>
         )}
-        {inCart && (
+        {cartItem && (
           <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-primary-500 rounded-full flex items-center justify-center">
-            <span className="text-white text-xs font-bold">{inCart.quantity}</span>
+            <span className="text-white text-xs font-bold">{cartItem.quantity}</span>
           </div>
         )}
-        {available && (
+        {hasStock && (
           <div className="absolute bottom-1.5 right-1.5 bg-white rounded-full px-1.5 py-0.5 text-xs text-primary-600 font-semibold shadow">
-            {item.makeable_count}✓
+            {item.makeable_count - cartQty}✓
           </div>
         )}
       </div>
@@ -85,7 +90,14 @@ function CartPanel({ onPlaceOrder }) {
                 <Minus size={11} />
               </button>
               <span className="w-6 text-center text-sm font-semibold">{quantity}</span>
-              <button onClick={() => updateQty(food_item.id, quantity + 1)} className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center hover:bg-primary-100 transition-colors">
+              <button
+                onClick={() => updateQty(food_item.id, quantity + 1)}
+                disabled={food_item.makeable_count > 0 && quantity >= food_item.makeable_count}
+                className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors
+                  ${food_item.makeable_count > 0 && quantity >= food_item.makeable_count
+                    ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                    : 'bg-gray-200 hover:bg-primary-100'}`}
+              >
                 <Plus size={11} />
               </button>
             </div>
@@ -197,6 +209,11 @@ export default function BillingPage() {
   const [billOrder, setBill]  = useState(null)
   const { addItem, getItemCount } = useCartStore()
 
+  const handleAdd = (item) => {
+    const ok = addItem(item)
+    if (!ok) toast.error(`Only ${item.makeable_count} available — already at max`)
+  }
+
   const { data, isLoading } = useQuery({
     queryKey: ['billing-items', search, typeFilter],
     queryFn:  () => menuAPI.items.list({
@@ -274,7 +291,7 @@ export default function BillingPage() {
           {isLoading ? <PageLoader /> : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
               {items.map(item => (
-                <FoodCard key={item.id} item={item} onAdd={addItem} />
+                <FoodCard key={item.id} item={item} onAdd={handleAdd} />
               ))}
               {items.length === 0 && (
                 <div className="col-span-5">

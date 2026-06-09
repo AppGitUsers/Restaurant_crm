@@ -11,13 +11,17 @@ export const useCartStore = create((set, get) => ({
   addItem: (foodItem) => {
     const items    = get().items
     const existing = items.find(i => i.food_item.id === foodItem.id)
+    const maxQty   = foodItem.makeable_count ?? Infinity
+
     if (existing) {
+      if (existing.quantity >= maxQty) return false   // at stock limit
       set({ items: items.map(i =>
         i.food_item.id === foodItem.id
           ? { ...i, quantity: i.quantity + 1 }
           : i
       )})
     } else {
+      if (maxQty <= 0) return false
       set({ items: [...items, {
         food_item:  foodItem,
         quantity:   1,
@@ -25,6 +29,7 @@ export const useCartStore = create((set, get) => ({
         notes:      '',
       }]})
     }
+    return true
   },
 
   removeItem: (foodItemId) =>
@@ -35,8 +40,12 @@ export const useCartStore = create((set, get) => ({
       get().removeItem(foodItemId)
       return
     }
+    const cartItem = get().items.find(i => i.food_item.id === foodItemId)
+    const maxQty   = cartItem?.food_item?.makeable_count ?? Infinity
     set({ items: get().items.map(i =>
-      i.food_item.id === foodItemId ? { ...i, quantity: qty } : i
+      i.food_item.id === foodItemId
+        ? { ...i, quantity: Math.min(qty, maxQty) }
+        : i
     )})
   },
 
@@ -45,12 +54,12 @@ export const useCartStore = create((set, get) => ({
     paymentMethod: 'CASH', discount: 0,
   }),
 
-  setCustomer: (name, phone) => set({ customerName: name, customerPhone: phone }),
-  setPaymentMethod: (m) => set({ paymentMethod: m }),
-  setDiscount:      (d) => set({ discount: d }),
+  setCustomer:      (name, phone) => set({ customerName: name, customerPhone: phone }),
+  setPaymentMethod: (m)           => set({ paymentMethod: m }),
+  setDiscount:      (d)           => set({ discount: d }),
 
   getSubtotal: () => get().items.reduce((s, i) => s + i.quantity * i.unit_price, 0),
-  getTax:      () => {
+  getTax: () => {
     const sub = get().getSubtotal()
     const dis = get().discount
     return ((sub - dis) * get().taxPercent) / 100
