@@ -1,18 +1,19 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { menuAPI, billingAPI } from '@/api'
 import { useCartStore } from '@/store/cartStore'
-import { PageLoader, Modal, SearchBar, Empty } from '@/components/ui'
+import { PageLoader, Modal, Empty } from '@/components/ui'
 import toast from 'react-hot-toast'
 import {
   ShoppingCart, Plus, Minus, Trash2, UtensilsCrossed,
-  CheckCircle, Printer, X, Receipt, Sparkles, Check
+  CheckCircle, Printer, X, Receipt, Sparkles, Check, Wand2
 } from 'lucide-react'
 
 // ── Food card ─────────────────────────────────────────
 function FoodCard({ item, onAdd }) {
-  // Sum across ALL cart rows for this food item (could be multiple rows with different addons)
-  const cartQty  = useCartStore(s => s.items.filter(i => i.food_item.id === item.id).reduce((t, i) => t + i.quantity, 0))
+  const cartQty  = useCartStore(s =>
+    s.items.filter(i => !i.is_custom && i.food_item?.id === item.id).reduce((t, i) => t + i.quantity, 0)
+  )
   const inCart   = cartQty > 0
   const hasStock = item.is_available && item.makeable_count > 0
   const atMax    = hasStock && cartQty >= item.makeable_count
@@ -108,6 +109,191 @@ function AddonPickerModal({ cartItem, onSave, onClose }) {
   )
 }
 
+// ── Customize modal ───────────────────────────────────
+function CustomizeModal({ onClose, onAdd }) {
+  const [selected, setSelected]       = useState({})   // { typeId: foodItemObj }
+  const [selectedAddons, setAddons]   = useState([])
+
+  const { data: customTypes = [] } = useQuery({
+    queryKey: ['customizable-types'],
+    queryFn:  () => menuAPI.types.list({ is_active: true, is_customizable: true })
+                      .then(r => r.data.results || r.data),
+  })
+
+  const { data: allItems = [] } = useQuery({
+    queryKey: ['customizable-items'],
+    queryFn:  () => menuAPI.items.list({ is_active: true }).then(r => r.data.results || r.data),
+    enabled:  customTypes.length > 0,
+  })
+
+  const customTypeIds  = new Set(customTypes.map(t => t.id))
+  const itemsByType    = (typeId) => allItems.filter(i => i.food_type === typeId && i.is_available)
+
+  // Addons: union of all addons from types that allow_addons, deduplicated by id
+  const availableAddons = (() => {
+    const map = new Map()
+    customTypes.filter(t => t.allow_addons).forEach(t =>
+      (t.addons || []).filter(a => a.is_active).forEach(a => map.set(a.id, a))
+    )
+    return [...map.values()]
+  })()
+
+  const toggleItem = (typeId, item) => {
+    setSelected(prev => {
+      const cur = prev[typeId]
+      if (cur?.id === item.id) {
+        const next = { ...prev }
+        delete next[typeId]
+        return next
+      }
+      return { ...prev, [typeId]: item }
+    })
+  }
+
+  const toggleAddon = (addon) => {
+    setAddons(prev => {
+      const exists = prev.find(a => a.id === addon.id)
+      return exists ? prev.filter(a => a.id !== addon.id) : [...prev, addon]
+    })
+  }
+
+  const isAddonSelected = (id) => selectedAddons.some(a => a.id === id)
+
+  const components    = Object.values(selected)
+  const categoriesUsed = Object.keys(selected).length
+  const canAdd        = categoriesUsed >= 2
+
+  const basePrice  = components.reduce((s, c) => s + parseFloat(c.price), 0)
+  const addonCost  = selectedAddons.reduce((s, a) => s + (a.is_costed ? parseFloat(a.price) : 0), 0)
+  const totalPrice = basePrice + addonCost
+
+  const customName = components.map(c => c.name).join(' + ')
+
+  const handleAdd = () => {
+    if (!canAdd) return
+    onAdd(components, selectedAddons, customName)
+    onClose()
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Customize Your Order" size="lg"
+      footer={<>
+        <button onClick={onClose} className="btn-ghost">Cancel</button>
+        <button
+          onClick={handleAdd}
+          disabled={!canAdd}
+          className={`btn-primary ${!canAdd ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          <Wand2 size={15} />
+          {canAdd ? `Add to Cart — ₹${totalPrice.toFixed(2)}` : 'Select from 2+ categories'}
+        </button>
+      </>}
+    >
+      {customTypes.length === 0 ? (
+        <div className="py-10 text-center text-gray-400">
+          <Wand2 size={40} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm">No customizable categories configured.</p>
+          <p className="text-xs mt-1">Enable "Customizable" on categories in the Menu page.</p>
+        </div>
+      ) : (
+        <div className="space-y-5 max-h-[60vh] overflow-y-auto pr-1">
+          {/* Category sections */}
+          {customTypes.map(type => {
+            const typeItems  = itemsByType(type.id)
+            const selItem    = selected[type.id]
+            return (
+              <div key={type.id}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-base">{type.icon}</span>
+                  <h4 className="font-semibold text-gray-700 text-sm">{type.name}</h4>
+                  <span className="text-xs text-gray-400">(pick one)</span>
+                </div>
+                {typeItems.length === 0 ? (
+                  <p className="text-xs text-gray-400 py-2 ml-6">No available items</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 ml-0">
+                    {typeItems.map(item => {
+                      const isSel = selItem?.id === item.id
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => toggleItem(type.id, item)}
+                          className={`p-3 rounded-xl border-2 cursor-pointer transition-all select-none
+                            ${isSel
+                              ? 'border-primary-400 bg-primary-50'
+                              : 'border-gray-100 hover:border-gray-200 bg-white'}`}
+                        >
+                          <div className="flex items-start justify-between gap-1">
+                            <p className="text-sm font-medium text-gray-800 line-clamp-2 flex-1">{item.name}</p>
+                            <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center
+                              ${isSel ? 'border-primary-500 bg-primary-500' : 'border-gray-300'}`}>
+                              {isSel && <Check size={9} className="text-white" />}
+                            </div>
+                          </div>
+                          <p className="text-xs font-bold text-primary-500 mt-1">₹{parseFloat(item.price).toFixed(2)}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          {/* Add-ons section */}
+          {availableAddons.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles size={14} className="text-primary-400" />
+                <h4 className="font-semibold text-gray-700 text-sm">Add-ons (optional)</h4>
+              </div>
+              <div className="space-y-1.5">
+                {availableAddons.map(addon => (
+                  <div
+                    key={addon.id}
+                    onClick={() => toggleAddon(addon)}
+                    className={`flex items-center justify-between p-2.5 rounded-xl border-2 cursor-pointer transition-colors
+                      ${isAddonSelected(addon.id) ? 'border-primary-400 bg-primary-50' : 'border-gray-100 hover:border-gray-200'}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0
+                        ${isAddonSelected(addon.id) ? 'border-primary-500 bg-primary-500' : 'border-gray-300'}`}>
+                        {isAddonSelected(addon.id) && <Check size={9} className="text-white" />}
+                      </div>
+                      <span className="text-sm text-gray-700">{addon.name}</span>
+                    </div>
+                    <span className={`text-xs font-semibold ${addon.is_costed ? 'text-primary-600' : 'text-gray-400'}`}>
+                      {addon.is_costed ? `+₹${parseFloat(addon.price).toFixed(2)}` : 'Free'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Summary strip */}
+          {components.length > 0 && (
+            <div className="sticky bottom-0 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <p className="text-sm font-semibold text-amber-800 line-clamp-1">
+                {customName}
+              </p>
+              <div className="flex items-center justify-between mt-1">
+                <p className="text-xs text-amber-600">
+                  Base ₹{basePrice.toFixed(2)}{addonCost > 0 ? ` + Add-ons ₹${addonCost.toFixed(2)}` : ''}
+                </p>
+                <p className="text-sm font-bold text-amber-700">₹{totalPrice.toFixed(2)}</p>
+              </div>
+              {!canAdd && (
+                <p className="text-xs text-amber-500 mt-0.5">Select from at least 2 categories to continue</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </Modal>
+  )
+}
+
 // ── Cart panel ────────────────────────────────────────
 function CartPanel({ onPlaceOrder }) {
   const {
@@ -134,13 +320,68 @@ function CartPanel({ onPlaceOrder }) {
       {/* Items */}
       <div className="flex-1 overflow-y-auto space-y-2 pr-1">
         {items.map((cartItem) => {
-          const { cartId, food_item, quantity, unit_price, selected_addons } = cartItem
+          const { cartId, food_item, is_custom, custom_name, components, quantity, unit_price, selected_addons, addon_unit_price } = cartItem
+
+          if (is_custom) {
+            const addonCost = addon_unit_price || 0
+            const lineTotal = quantity * (unit_price + addonCost)
+            return (
+              <div key={cartId} className="p-2 rounded-lg bg-amber-50 border border-amber-200 space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1">
+                      <Wand2 size={11} className="text-amber-500 flex-shrink-0" />
+                      <p className="text-sm font-medium text-amber-800 truncate">{custom_name}</p>
+                    </div>
+                    <p className="text-xs text-amber-600">
+                      ₹{unit_price.toFixed(2)}{addonCost > 0 ? ` +₹${addonCost.toFixed(2)}` : ''} each
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => updateQty(cartId, quantity - 1)} className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center hover:bg-amber-200 transition-colors">
+                      <Minus size={11} />
+                    </button>
+                    <span className="w-6 text-center text-sm font-semibold">{quantity}</span>
+                    <button onClick={() => updateQty(cartId, quantity + 1)} className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center hover:bg-amber-200 transition-colors">
+                      <Plus size={11} />
+                    </button>
+                  </div>
+                  <p className="text-sm font-semibold text-amber-700 w-16 text-right">₹{lineTotal.toFixed(2)}</p>
+                  <button onClick={() => removeItem(cartId)} className="text-red-300 hover:text-red-500 ml-1">
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+                {/* Component chips */}
+                {components?.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {components.map((c, i) => (
+                      <span key={i} className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                        {c.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {/* Addon chips */}
+                {selected_addons?.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {selected_addons.map(a => (
+                      <span key={a.id} className="text-xs bg-primary-50 text-primary-600 px-2 py-0.5 rounded-full">
+                        {a.name}{a.is_costed ? ` +₹${parseFloat(a.price).toFixed(2)}` : ''}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          }
+
+          // Regular item
           const addonCost    = (selected_addons || []).reduce((s, a) => s + (a.is_costed ? parseFloat(a.price) : 0), 0)
           const hasAddons    = food_item.food_type_allow_addons && food_item.food_type_addons?.length > 0
           const lineTotal    = quantity * (unit_price + addonCost)
-          // Total qty across ALL rows for this food item (for stock-max check on + button)
-          const totalFoodQty = items.filter(i => i.food_item.id === food_item.id).reduce((s, i) => s + i.quantity, 0)
+          const totalFoodQty = items.filter(i => !i.is_custom && i.food_item?.id === food_item.id).reduce((s, i) => s + i.quantity, 0)
           const atMax        = food_item.makeable_count > 0 && totalFoodQty >= food_item.makeable_count
+
           return (
             <div key={cartId} className="p-2 rounded-lg bg-gray-50 space-y-1">
               <div className="flex items-center gap-2">
@@ -170,7 +411,6 @@ function CartPanel({ onPlaceOrder }) {
                 </button>
               </div>
 
-              {/* Selected add-ons chips */}
               {selected_addons?.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {selected_addons.map(a => (
@@ -181,7 +421,6 @@ function CartPanel({ onPlaceOrder }) {
                 </div>
               )}
 
-              {/* Add-ons button */}
               {hasAddons && (
                 <button
                   onClick={() => setAddonTarget(cartItem)}
@@ -196,7 +435,6 @@ function CartPanel({ onPlaceOrder }) {
         })}
       </div>
 
-      {/* Add-on picker modal */}
       {addonTarget && (
         <AddonPickerModal
           cartItem={addonTarget}
@@ -205,7 +443,6 @@ function CartPanel({ onPlaceOrder }) {
         />
       )}
 
-      {/* Customer */}
       <div className="divider" />
       <div className="space-y-2">
         <input className="input-sm" placeholder="Customer name (optional)" value={customerName} onChange={e => setCustomer(e.target.value, customerPhone)} />
@@ -221,7 +458,6 @@ function CartPanel({ onPlaceOrder }) {
         </div>
       </div>
 
-      {/* Totals */}
       <div className="mt-3 space-y-1.5 text-sm border-t border-gray-100 pt-3">
         <div className="flex justify-between text-gray-600"><span>Subtotal</span><span>₹{getSubtotal().toFixed(2)}</span></div>
         {discount > 0 && <div className="flex justify-between text-red-500"><span>Discount</span><span>-₹{discount.toFixed(2)}</span></div>}
@@ -231,7 +467,6 @@ function CartPanel({ onPlaceOrder }) {
         </div>
       </div>
 
-      {/* Actions */}
       <div className="mt-3 flex gap-2">
         <button onClick={clearCart} className="btn-ghost flex-1 justify-center text-xs py-2"><X size={13} />Clear</button>
         <button onClick={onPlaceOrder} className="btn-primary flex-1 justify-center py-2"><Receipt size={14} />Confirm &amp; Pay</button>
@@ -303,10 +538,11 @@ function BillModal({ order, onClose }) {
 // ── Main BillingPage ──────────────────────────────────
 export default function BillingPage() {
   const qc = useQueryClient()
-  const [search, setSearch]   = useState('')
-  const [typeFilter, setType] = useState('')
-  const [billOrder, setBill]  = useState(null)
-  const { addItem, getItemCount } = useCartStore()
+  const [search, setSearch]         = useState('')
+  const [typeFilter, setType]       = useState('')
+  const [billOrder, setBill]        = useState(null)
+  const [showCustomize, setCustomize] = useState(false)
+  const { addItem, addCustomItem, getItemCount } = useCartStore()
 
   const handleAdd = (item) => {
     const ok = addItem(item)
@@ -338,6 +574,18 @@ export default function BillingPage() {
         discount,
         tax_percent: taxPercent,
         items: items.map(i => {
+          if (i.is_custom) {
+            const componentNames = (i.components || []).map(c => c.name).join(' + ')
+            const addonNames     = i.selected_addons?.length ? ` | Add-ons: ${i.selected_addons.map(a => a.name).join(', ')}` : ''
+            return {
+              food_item:        null,
+              custom_name:      i.custom_name,
+              quantity:         i.quantity,
+              unit_price:       i.unit_price,
+              addon_unit_price: i.addon_unit_price || 0,
+              notes:            `Custom: ${componentNames}${addonNames}`,
+            }
+          }
           const addonCost = (i.selected_addons || []).reduce((s, a) => s + (a.is_costed ? parseFloat(a.price) : 0), 0)
           return {
             food_item:        i.food_item.id,
@@ -361,7 +609,7 @@ export default function BillingPage() {
     onError: () => toast.error('Order failed. Check stock availability.'),
   })
 
-  const items = data || []
+  const items     = data || []
   const typesList = types || []
   const cartCount = getItemCount()
 
@@ -377,6 +625,13 @@ export default function BillingPage() {
             <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           </div>
           <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => setCustomize(true)}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors bg-amber-100 text-amber-700 hover:bg-amber-200 flex items-center gap-1.5"
+            >
+              <Wand2 size={12} />
+              Customize
+            </button>
             <button onClick={() => setType('')}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${typeFilter === '' ? 'bg-primary-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
               All
@@ -422,6 +677,17 @@ export default function BillingPage() {
         </div>
         <CartPanel onPlaceOrder={() => placeOrder.mutate()} />
       </div>
+
+      {/* Customize modal */}
+      {showCustomize && (
+        <CustomizeModal
+          onClose={() => setCustomize(false)}
+          onAdd={(components, addons, name) => {
+            addCustomItem(components, addons, name)
+            toast.success(`"${name}" added to cart!`)
+          }}
+        />
+      )}
 
       {/* Bill receipt modal */}
       <BillModal order={billOrder} onClose={() => setBill(null)} />

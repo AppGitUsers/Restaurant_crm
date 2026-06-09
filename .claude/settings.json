@@ -5,7 +5,8 @@
       "PowerShell(Get-Command py -ErrorAction SilentlyContinue)",
       "PowerShell(Get-Command python3.11 -ErrorAction SilentlyContinue)",
       "PowerShell(Get-Command python3.12 -ErrorAction SilentlyContinue)",
-      "PowerShell(Get-Command python3.13 -ErrorAction SilentlyContinue)"
+      "PowerShell(Get-Command python3.13 -ErrorAction SilentlyContinue)",
+      "Bash(.\\\\venv\\\\Scripts\\\\python.exe manage.py migrate)"
     ]
   }
 }

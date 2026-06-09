@@ -18,7 +18,7 @@ class FoodTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model  = FoodType
         fields = ['id', 'name', 'description', 'icon', 'sort_order', 'is_active',
-                  'allow_addons', 'addons', 'addon_ids', 'item_count', 'created_at']
+                  'allow_addons', 'addons', 'addon_ids', 'is_customizable', 'item_count', 'created_at']
 
     def get_item_count(self, obj):
         return obj.items.filter(is_active=True).count()

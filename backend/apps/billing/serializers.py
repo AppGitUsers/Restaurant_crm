@@ -3,14 +3,26 @@ from .models import Order, OrderItem
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
-    food_item_name = serializers.CharField(source='food_item.name', read_only=True)
-    food_type_name = serializers.CharField(source='food_item.food_type.name', read_only=True)
+    food_item_name = serializers.SerializerMethodField()
+    food_type_name = serializers.SerializerMethodField()
     line_total     = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
 
     class Meta:
         model  = OrderItem
         fields = ['id', 'food_item', 'food_item_name', 'food_type_name',
-                  'quantity', 'unit_price', 'addon_unit_price', 'line_total', 'notes']
+                  'custom_name', 'quantity', 'unit_price', 'addon_unit_price',
+                  'line_total', 'notes']
+        extra_kwargs = {'food_item': {'required': False, 'allow_null': True}}
+
+    def get_food_item_name(self, obj):
+        if obj.food_item:
+            return obj.food_item.name
+        return obj.custom_name or 'Custom Item'
+
+    def get_food_type_name(self, obj):
+        if obj.food_item:
+            return obj.food_item.food_type.name
+        return 'Custom'
 
 
 class OrderSerializer(serializers.ModelSerializer):

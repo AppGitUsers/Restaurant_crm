@@ -22,9 +22,9 @@ class AddonViewSet(viewsets.ModelViewSet):
 
 
 class FoodTypeViewSet(viewsets.ModelViewSet):
-    queryset           = FoodType.objects.all()
+    queryset           = FoodType.objects.prefetch_related('addons').all()
     serializer_class   = FoodTypeSerializer
-    filterset_fields   = ['is_active']
+    filterset_fields   = ['is_active', 'is_customizable']
     search_fields      = ['name']
 
     def get_permissions(self):

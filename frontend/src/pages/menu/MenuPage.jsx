@@ -10,7 +10,7 @@ function FoodTypeTab() {
   const qc = useQueryClient()
   const [modal, setModal] = useState(null)
   const [sel, setSel]     = useState(null)
-  const [form, setForm]   = useState({ name: '', description: '', icon: '', sort_order: 0, allow_addons: false, addon_ids: [] })
+  const [form, setForm]   = useState({ name: '', description: '', icon: '', sort_order: 0, allow_addons: false, addon_ids: [], is_customizable: false })
   const [del, setDel]     = useState(null)
 
   const { data, isLoading } = useQuery({ queryKey: ['food-types'], queryFn: () => menuAPI.types.list().then(r => r.data.results || r.data) })
@@ -26,14 +26,15 @@ function FoodTypeTab() {
     onSuccess: () => { qc.invalidateQueries(['food-types']); setDel(null); toast.success('Deleted') },
   })
 
-  const blankForm = { name: '', description: '', icon: '', sort_order: 0, allow_addons: false, addon_ids: [] }
+  const blankForm = { name: '', description: '', icon: '', sort_order: 0, allow_addons: false, addon_ids: [], is_customizable: false }
   const openCreate = () => { setSel(null); setForm(blankForm); setModal('form') }
   const openEdit   = (t)  => {
     setSel(t)
     setForm({
       name: t.name, description: t.description, icon: t.icon, sort_order: t.sort_order,
-      allow_addons: t.allow_addons || false,
-      addon_ids: (t.addons || []).map(a => a.id),
+      allow_addons:    t.allow_addons    || false,
+      addon_ids:       (t.addons || []).map(a => a.id),
+      is_customizable: t.is_customizable || false,
     })
     setModal('form')
   }
@@ -72,6 +73,11 @@ function FoodTypeTab() {
                 <Sparkles size={10} /> Add-ons ({(t.addons || []).length})
               </span>
             )}
+            {t.is_customizable && (
+              <span className="inline-flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full w-fit">
+                ✦ Customizable
+              </span>
+            )}
             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <button onClick={() => openEdit(t)} className="btn-ghost py-1 px-2 text-xs"><Edit2 size={12} />Edit</button>
               <button onClick={() => setDel(t)} className="btn-ghost py-1 px-2 text-xs text-red-500"><Trash2 size={12} /></button>
@@ -102,6 +108,19 @@ function FoodTypeTab() {
               <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.allow_addons ? 'translate-x-5' : 'translate-x-0.5'}`} />
             </div>
             <span className="text-sm text-gray-600">{form.allow_addons ? 'Yes — customers can add extras' : 'No add-ons for this category'}</span>
+          </label>
+        </Field>
+
+        {/* Customizable toggle */}
+        <Field label="Customizable?">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <div
+              onClick={() => setForm({ ...form, is_customizable: !form.is_customizable })}
+              className={`relative w-10 h-5 rounded-full transition-colors ${form.is_customizable ? 'bg-amber-500' : 'bg-gray-200'}`}
+            >
+              <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.is_customizable ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </div>
+            <span className="text-sm text-gray-600">{form.is_customizable ? 'Yes — available in custom combos' : 'Not customizable'}</span>
           </label>
         </Field>
 

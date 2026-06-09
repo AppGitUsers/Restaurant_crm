@@ -57,7 +57,8 @@ class Order(models.Model):
 
 class OrderItem(models.Model):
     order            = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
-    food_item        = models.ForeignKey(FoodItem, on_delete=models.PROTECT)
+    food_item        = models.ForeignKey(FoodItem, on_delete=models.PROTECT, null=True, blank=True)
+    custom_name      = models.CharField(max_length=500, blank=True)
     quantity         = models.PositiveIntegerField(default=1)
     unit_price       = models.DecimalField(max_digits=10, decimal_places=2)
     addon_unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -68,4 +69,5 @@ class OrderItem(models.Model):
         return self.quantity * (self.unit_price + self.addon_unit_price)
 
     def __str__(self):
-        return f"{self.food_item.name} × {self.quantity}"
+        label = self.custom_name or (self.food_item.name if self.food_item else 'Custom')
+        return f"{label} × {self.quantity}"

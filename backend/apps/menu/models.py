@@ -21,9 +21,10 @@ class FoodType(models.Model):
     icon         = models.CharField(max_length=50, blank=True, help_text='Emoji or icon class')
     sort_order   = models.PositiveIntegerField(default=0)
     is_active    = models.BooleanField(default=True)
-    allow_addons = models.BooleanField(default=False)
-    addons       = models.ManyToManyField('Addon', blank=True, related_name='food_types')
-    created_at   = models.DateTimeField(auto_now_add=True)
+    allow_addons    = models.BooleanField(default=False)
+    addons          = models.ManyToManyField('Addon', blank=True, related_name='food_types')
+    is_customizable = models.BooleanField(default=False)
+    created_at      = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['sort_order', 'name']
