@@ -10,10 +10,18 @@ class Department(models.Model):
 
 
 class Shift(models.Model):
-    name       = models.CharField(max_length=100)
-    start_time = models.TimeField()
-    end_time   = models.TimeField()
-    is_active  = models.BooleanField(default=True)
+    name            = models.CharField(max_length=100)
+    start_time      = models.TimeField()
+    end_time        = models.TimeField()
+    late_threshold  = models.PositiveIntegerField(
+        default=15, help_text='Minutes after start time before marked late')
+    ot_threshold    = models.PositiveIntegerField(
+        default=30, help_text='Minutes beyond shift end before counted as overtime')
+    days            = models.CharField(
+        max_length=50, default='MON,TUE,WED,THU,FRI',
+        help_text='Comma-separated day codes: MON,TUE,WED,THU,FRI,SAT,SUN')
+    notes           = models.TextField(blank=True)
+    is_active       = models.BooleanField(default=True)
 
     def __str__(self):
         return f"{self.name} ({self.start_time.strftime('%H:%M')} – {self.end_time.strftime('%H:%M')})"
@@ -26,6 +34,10 @@ class Shift(models.Model):
         if end < start:
             end += datetime.timedelta(days=1)
         return round((end - start).seconds / 3600, 2)
+
+    @property
+    def days_list(self):
+        return [d.strip() for d in self.days.split(',') if d.strip()] if self.days else []
 
 
 class Employee(models.Model):

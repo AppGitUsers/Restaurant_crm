@@ -9,11 +9,14 @@ class DepartmentSerializer(serializers.ModelSerializer):
 
 
 class ShiftSerializer(serializers.ModelSerializer):
-    hours = serializers.FloatField(read_only=True)
+    hours     = serializers.FloatField(read_only=True)
+    days_list = serializers.ListField(read_only=True)
 
     class Meta:
         model  = Shift
-        fields = ['id', 'name', 'start_time', 'end_time', 'hours', 'is_active']
+        fields = ['id', 'name', 'start_time', 'end_time',
+                  'late_threshold', 'ot_threshold', 'days', 'days_list',
+                  'notes', 'hours', 'is_active']
 
 
 class EmployeeSerializer(serializers.ModelSerializer):

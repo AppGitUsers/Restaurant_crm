@@ -27,7 +27,7 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model  = CustomUser
         fields = ['id', 'username', 'email', 'first_name', 'last_name',
-                  'role', 'phone', 'is_active', 'password', 'date_joined']
+                  'role', 'phone', 'is_active', 'password', 'linked_employee', 'date_joined']
         read_only_fields = ['date_joined']
 
     def create(self, validated_data):
@@ -48,7 +48,13 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserListSerializer(serializers.ModelSerializer):
+    linked_employee_name = serializers.SerializerMethodField()
+
     class Meta:
         model  = CustomUser
         fields = ['id', 'username', 'email', 'first_name', 'last_name',
-                  'role', 'phone', 'is_active', 'date_joined']
+                  'role', 'phone', 'is_active', 'linked_employee',
+                  'linked_employee_name', 'date_joined']
+
+    def get_linked_employee_name(self, obj):
+        return obj.linked_employee.name if obj.linked_employee else None
