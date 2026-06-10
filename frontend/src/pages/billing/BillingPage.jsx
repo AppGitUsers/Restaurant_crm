@@ -745,16 +745,30 @@ export default function BillingPage() {
 
         {/* Grid */}
         <div className="flex-1 overflow-y-auto">
-          {isLoading ? <PageLoader /> : (
+          {isLoading ? <PageLoader /> : typeFilter ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-              {items.map(item => (
-                <FoodCard key={item.id} item={item} onAdd={handleAdd} />
-              ))}
-              {items.length === 0 && (
-                <div className="col-span-5">
-                  <Empty message="No items found" icon={<UtensilsCrossed size={48} />} />
-                </div>
-              )}
+              {items.map(item => <FoodCard key={item.id} item={item} onAdd={handleAdd} />)}
+              {items.length === 0 && <div className="col-span-5"><Empty message="No items found" icon={<UtensilsCrossed size={48} />} /></div>}
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {typesList
+                .map(type => ({ type, groupItems: items.filter(i => String(i.food_type) === String(type.id)) }))
+                .filter(({ groupItems }) => groupItems.length > 0)
+                .map(({ type, groupItems }) => (
+                  <div key={type.id}>
+                    <div className="flex items-center gap-1.5 mb-2 pb-1.5 border-b border-gray-100">
+                      <span className="text-base">{type.icon}</span>
+                      <h3 className="font-semibold text-sm text-gray-700">{type.name}</h3>
+                      <span className="text-xs text-gray-400">({groupItems.length})</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                      {groupItems.map(item => <FoodCard key={item.id} item={item} onAdd={handleAdd} />)}
+                    </div>
+                  </div>
+                ))
+              }
+              {items.length === 0 && <Empty message="No items found" icon={<UtensilsCrossed size={48} />} />}
             </div>
           )}
         </div>

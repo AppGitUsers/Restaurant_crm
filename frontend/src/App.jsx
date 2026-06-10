@@ -55,8 +55,14 @@ export default function App() {
         <Route path="staff"          element={<StaffPage />} />
         <Route path="customers"      element={<CustomersPage />} />
         <Route path="settings"       element={<SettingsPage />} />
-        <Route path="kiosk"          element={<AttendanceKiosk />} />
       </Route>
+
+      {/* Kiosk — full-screen, no sidebar, accessible by both roles */}
+      <Route path="/kiosk" element={
+        <RequireAuth allowedRoles={['ADMIN', 'BILLER']}>
+          <AttendanceKiosk />
+        </RequireAuth>
+      } />
 
       {/* Biller routes */}
       <Route path="/billing" element={
@@ -64,8 +70,7 @@ export default function App() {
           <BillerLayout />
         </RequireAuth>
       }>
-        <Route index             element={<BillingPage />} />
-        <Route path="kiosk"      element={<AttendanceKiosk />} />
+        <Route index element={<BillingPage />} />
       </Route>
 
       {/* Fallback */}

@@ -295,39 +295,52 @@ function FoodItemTab() {
         <button onClick={openCreate} className="btn-primary"><Plus size={15} />Add Item</button>
       </SearchBar>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {isLoading && <div className="col-span-4"><PageLoader /></div>}
-        {items.map(item => (
-          <div key={item.id} className={`card group relative flex flex-col gap-3 ${!item.is_active ? 'opacity-60' : ''}`}>
-            {/* Photo */}
-            <div className="w-full h-36 rounded-lg bg-primary-50 flex items-center justify-center overflow-hidden">
-              {item.photo_url
-                ? <img src={item.photo_url} alt={item.name} className="w-full h-full object-cover rounded-lg" />
-                : <UtensilsCrossed size={32} className="text-primary-200" />
-              }
-            </div>
-            {/* Type badge */}
-            <div className="flex items-center justify-between">
-              <span className="badge-green text-xs">{item.food_type_icon} {item.food_type_name}</span>
-              <span className={item.is_available ? 'badge-green' : 'badge-red'}>
-                {item.is_available ? `${item.makeable_count} can make` : 'Unavailable'}
-              </span>
-            </div>
-            <div>
-              <p className="font-semibold text-gray-800">{item.name}</p>
-              {item.description && <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{item.description}</p>}
-            </div>
-            <p className="text-lg font-bold text-primary-500">₹{parseFloat(item.price).toFixed(2)}</p>
-            {/* Actions */}
-            <div className="flex gap-1 pt-1 border-t border-gray-50">
-              <button onClick={() => openEdit(item)} className="btn-ghost py-1 text-xs flex-1"><Edit2 size={12} />Edit</button>
-              <button onClick={() => openRecipe(item)} className="btn-ghost py-1 text-xs flex-1"><ChefHat size={12} />Recipe</button>
-              <button onClick={() => setDel(item)} className="btn-ghost py-1 text-xs text-red-400"><Trash2 size={12} /></button>
-            </div>
-          </div>
-        ))}
-        {!isLoading && items.length === 0 && <div className="col-span-4"><Empty message="No food items found" icon={<UtensilsCrossed size={48} />} /></div>}
-      </div>
+      {isLoading ? <PageLoader /> : (
+        <div className="space-y-8">
+          {typesList
+            .map(type => ({ type, groupItems: items.filter(i => String(i.food_type) === String(type.id)) }))
+            .filter(({ groupItems }) => groupItems.length > 0)
+            .map(({ type, groupItems }) => (
+              <div key={type.id}>
+                <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100">
+                  <span className="text-xl">{type.icon || '🍽'}</span>
+                  <h3 className="font-semibold text-gray-700">{type.name}</h3>
+                  <span className="text-xs text-gray-400 ml-1">{groupItems.length} item{groupItems.length !== 1 ? 's' : ''}</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {groupItems.map(item => (
+                    <div key={item.id} className={`card group relative flex flex-col gap-3 ${!item.is_active ? 'opacity-60' : ''}`}>
+                      <div className="w-full h-36 rounded-lg bg-primary-50 flex items-center justify-center overflow-hidden">
+                        {item.photo_url
+                          ? <img src={item.photo_url} alt={item.name} className="w-full h-full object-cover rounded-lg" />
+                          : <UtensilsCrossed size={32} className="text-primary-200" />
+                        }
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className={item.is_available ? 'badge-green' : 'badge-red'}>
+                          {item.is_available ? `${item.makeable_count} can make` : 'Unavailable'}
+                        </span>
+                        <span className={item.is_active ? 'badge-green' : 'badge-gray'}>{item.is_active ? 'Active' : 'Inactive'}</span>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-800">{item.name}</p>
+                        {item.description && <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{item.description}</p>}
+                      </div>
+                      <p className="text-lg font-bold text-primary-500">₹{parseFloat(item.price).toFixed(2)}</p>
+                      <div className="flex gap-1 pt-1 border-t border-gray-50">
+                        <button onClick={() => openEdit(item)} className="btn-ghost py-1 text-xs flex-1"><Edit2 size={12} />Edit</button>
+                        <button onClick={() => openRecipe(item)} className="btn-ghost py-1 text-xs flex-1"><ChefHat size={12} />Recipe</button>
+                        <button onClick={() => setDel(item)} className="btn-ghost py-1 text-xs text-red-400"><Trash2 size={12} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          }
+          {items.length === 0 && <Empty message="No food items found" icon={<UtensilsCrossed size={48} />} />}
+        </div>
+      )}
 
       {/* Food Item Form Modal */}
       <Modal open={modal === 'form'} onClose={() => setModal(null)} title={sel ? 'Edit Food Item' : 'Add Food Item'}
