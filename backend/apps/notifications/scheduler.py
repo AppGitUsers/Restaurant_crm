@@ -12,6 +12,7 @@ def check_auto_absent():
     Marks staff ABSENT if no punch-in is recorded within 1 hour of their
     shift start time on a scheduled working day.
     """
+    print(f'[SCHEDULER] check_auto_absent fired at {datetime.datetime.now().strftime("%H:%M:%S")}')
     try:
         from apps.staff.models import Employee, Attendance
         from . import utils
@@ -25,14 +26,17 @@ def check_auto_absent():
 
         for emp in employees:
             if not emp.shift:
+                print(f'[SCHEDULER]   {emp.name} — SKIP (no shift)')
                 continue
             if today_code not in emp.shift.days_list:
+                print(f'[SCHEDULER]   {emp.name} — SKIP (not a working day today: {today_code}, shift days: {emp.shift.days_list})')
                 continue
 
             shift_start = datetime.datetime.combine(today, emp.shift.start_time)
             threshold   = shift_start + datetime.timedelta(hours=1)
 
             if now < threshold:
+                print(f'[SCHEDULER]   {emp.name} — SKIP (threshold not reached yet: {threshold.strftime("%H:%M")}, now: {now.strftime("%H:%M")})')
                 continue  # Not yet past the 1-hour grace window
 
             att, created = Attendance.objects.get_or_create(
@@ -45,8 +49,10 @@ def check_auto_absent():
             )
 
             if not created:
+                print(f'[SCHEDULER]   {emp.name} — SKIP (attendance already exists: {att.status})')
                 continue  # Already has an attendance record for today
 
+            print(f'[SCHEDULER]   {emp.name} — MARKED ABSENT')
             logger.info('Auto-absent: %s [%s]', emp.name, today)
 
             threshold_str = threshold.strftime('%I:%M %p')
@@ -81,12 +87,14 @@ def check_low_stock():
 
 def start_scheduler():
     if scheduler.running:
+        print('[SCHEDULER] Already running — skipping duplicate start.')
         return
 
+    print('[SCHEDULER] Starting...')
     scheduler.add_job(
         check_auto_absent,
-        trigger='interval',
-        hours=1,
+        trigger='cron',
+        minute=49,
         id='auto_absent_check',
         replace_existing=True,
         misfire_grace_time=300,
@@ -94,12 +102,14 @@ def start_scheduler():
 
     scheduler.add_job(
         check_low_stock,
-        trigger='interval',
-        hours=6,
+        trigger='cron',
+        hour='*/3',
+        minute=0,
         id='low_stock_check',
         replace_existing=True,
         misfire_grace_time=600,
     )
 
     scheduler.start()
-    logger.info('Notification scheduler started — auto_absent (1h), low_stock (6h)')
+    print('[SCHEDULER] Started — auto_absent (cron minute=42), low_stock (cron hour=*/3)')
+    logger.info('Notification scheduler started — auto_absent (cron), low_stock (cron)')

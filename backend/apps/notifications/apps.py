@@ -20,4 +20,7 @@ class NotificationsConfig(AppConfig):
                     start_scheduler()
                 except Exception as e:
                     import logging
+                    import traceback
                     logging.getLogger(__name__).warning(f'Scheduler failed to start: {e}')
+                    print(f'[SCHEDULER ERROR] Failed to start: {e}')
+                    traceback.print_exc()
