@@ -134,6 +134,7 @@ export const useCartStore = create((set, get) => ({
   setCustomer:      (name, phone) => set({ customerName: name, customerPhone: phone }),
   setPaymentMethod: (m)           => set({ paymentMethod: m }),
   setDiscount:      (d)           => set({ discount: d }),
+  setTaxPercent:    (p)           => set({ taxPercent: p }),
 
   getSubtotal: () => get().items.reduce((s, i) => {
     const addonCost = i.is_custom

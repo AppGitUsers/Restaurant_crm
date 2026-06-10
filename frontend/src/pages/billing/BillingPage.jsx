@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { menuAPI, billingAPI, customersAPI } from '@/api'
+import { menuAPI, billingAPI, customersAPI, settingsAPI } from '@/api'
 import { useCartStore } from '@/store/cartStore'
 import { PageLoader, Modal, Empty } from '@/components/ui'
 import toast from 'react-hot-toast'
@@ -376,7 +376,7 @@ function CustomerFields({ customerName, customerPhone, setCustomer }) {
 function CartPanel({ onPlaceOrder }) {
   const {
     items, removeItem, updateQty, setItemAddons,
-    customerName, customerPhone, paymentMethod, discount,
+    customerName, customerPhone, paymentMethod, discount, taxPercent,
     setCustomer, setPaymentMethod, setDiscount,
     getSubtotal, getTax, getTotal, clearCart,
   } = useCartStore()
@@ -542,7 +542,7 @@ function CartPanel({ onPlaceOrder }) {
       <div className="mt-3 space-y-1.5 text-sm border-t border-gray-100 pt-3">
         <div className="flex justify-between text-gray-600"><span>Subtotal</span><span>₹{getSubtotal().toFixed(2)}</span></div>
         {discount > 0 && <div className="flex justify-between text-red-500"><span>Discount</span><span>-₹{discount.toFixed(2)}</span></div>}
-        <div className="flex justify-between text-gray-600"><span>Tax (5%)</span><span>₹{getTax().toFixed(2)}</span></div>
+        <div className="flex justify-between text-gray-600"><span>Tax ({taxPercent}%)</span><span>₹{getTax().toFixed(2)}</span></div>
         <div className="flex justify-between text-base font-bold text-primary-600 pt-1 border-t border-gray-100">
           <span>Total</span><span>₹{getTotal().toFixed(2)}</span>
         </div>
@@ -623,7 +623,19 @@ export default function BillingPage() {
   const [typeFilter, setType]       = useState('')
   const [billOrder, setBill]        = useState(null)
   const [showCustomize, setCustomize] = useState(false)
-  const { addItem, addCustomItem, getItemCount } = useCartStore()
+  const { addItem, addCustomItem, getItemCount, setTaxPercent } = useCartStore()
+
+  // Sync GST rate from settings into cart store on page load
+  const { data: settingsData } = useQuery({
+    queryKey: ['settings'],
+    queryFn:  () => settingsAPI.get().then(r => r.data),
+    staleTime: 5 * 60_000,
+  })
+  useEffect(() => {
+    if (settingsData?.gst_rate !== undefined) {
+      setTaxPercent(parseFloat(settingsData.gst_rate) || 0)
+    }
+  }, [settingsData?.gst_rate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAdd = (item) => {
     const ok = addItem(item)

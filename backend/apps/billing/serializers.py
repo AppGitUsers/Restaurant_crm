@@ -52,6 +52,8 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                   'discount', 'tax_percent', 'notes', 'items']
 
     def create(self, validated_data):
+        from apps.settings_app.models import RestaurantSettings
+        validated_data['tax_percent'] = RestaurantSettings.get_settings().gst_rate
         items_data = validated_data.pop('items')
         order = Order.objects.create(**validated_data)
         for item_data in items_data:
