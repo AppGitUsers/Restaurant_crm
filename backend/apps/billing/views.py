@@ -49,6 +49,14 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.payment_method = payment_method
         order.status         = 'PAID'
         order.save()
+
+        # WhatsApp bill notification (non-blocking — never breaks the payment flow)
+        try:
+            from apps.notifications.utils import send_bill_notification
+            send_bill_notification(order)
+        except Exception:
+            pass
+
         return Response(OrderSerializer(order).data)
 
     @action(detail=True, methods=['post'])

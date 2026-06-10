@@ -8,7 +8,20 @@
       "PowerShell(Get-Command python3.13 -ErrorAction SilentlyContinue)",
       "Bash(.\\\\venv\\\\Scripts\\\\python.exe manage.py migrate)",
       "Bash(Get-ChildItem -Force)",
-      "Bash(Select-Object Name, PSIsContainer)"
+      "Bash(Select-Object Name, PSIsContainer)",
+      "Bash(Get-ChildItem -Path \"D:\\\\Projects\\\\Restaurant_crm\\\\backend\\\\apps\" -Recurse)",
+      "Bash(python manage.py makemigrations settings_app notifications)",
+      "Bash(python3 manage.py makemigrations settings_app notifications)",
+      "Bash(py manage.py makemigrations settings_app notifications)",
+      "Bash(dir \"d:\\\\Projects\\\\Restaurant_crm\" /b)",
+      "Bash(dir \"d:\\\\Projects\\\\Restaurant_crm\\\\backend\" /b)",
+      "Bash(\"d:/Projects/Restaurant_crm/backend/venv/Scripts/python.exe\" \"d:/Projects/Restaurant_crm/backend/manage.py\" makemigrations settings_app notifications)",
+      "Bash(\"d:/Projects/Restaurant_crm/backend/venv/Scripts/python.exe\" \"d:/Projects/Restaurant_crm/backend/manage.py\" migrate)",
+      "Bash(\"d:/Projects/Restaurant_crm/backend/venv/Scripts/pip.exe\" install *)",
+      "Bash(\"d:/Projects/Restaurant_crm/backend/venv/Scripts/python.exe\" \"d:/Projects/Restaurant_crm/backend/manage.py\" check)",
+      "Read(//d/Projects/**)",
+      "Bash(grep -r \"queue_and_send\\\\|send_whatsapp_message\\\\|BILL\\\\|ABSENT_STAFF\" /d/Projects/Restaurant_crm/backend/apps --include=\"*.py\" ! -path \"*/__pycache__/*\" ! -path \"*/migrations/*\" ! -path \"*/venv/*\")",
+      "Read(//c//**)"
     ]
   }
 }

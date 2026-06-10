@@ -14,6 +14,7 @@ import InventoryPage  from '@/pages/inventory/InventoryPage'
 import FinancePage    from '@/pages/finance/FinancePage'
 import StaffPage      from '@/pages/staff/StaffPage'
 import CustomersPage  from '@/pages/customers/CustomersPage'
+import SettingsPage   from '@/pages/settings/SettingsPage'
 
 // Billing pages
 import BillingPage       from '@/pages/billing/BillingPage'
@@ -53,6 +54,7 @@ export default function App() {
         <Route path="finance"        element={<FinancePage />} />
         <Route path="staff"          element={<StaffPage />} />
         <Route path="customers"      element={<CustomersPage />} />
+        <Route path="settings"       element={<SettingsPage />} />
         <Route path="kiosk"          element={<AttendanceKiosk />} />
       </Route>
 

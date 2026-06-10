@@ -12,5 +12,7 @@ urlpatterns = [
     path('api/finance/',   include('apps.finance.urls')),
     path('api/staff/',     include('apps.staff.urls')),
     path('api/customers/', include('apps.customers.urls')),
-    path('api/dashboard/', include('apps.dashboard.urls')),
+    path('api/dashboard/',      include('apps.dashboard.urls')),
+    path('api/settings/',       include('apps.settings_app.urls')),
+    path('api/notifications/',  include('apps.notifications.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

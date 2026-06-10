@@ -155,3 +155,15 @@ export const customersAPI = {
 export const dashboardAPI = {
   summary: () => client.get('/dashboard/summary/'),
 }
+
+// ── Settings ──────────────────────────────────────────
+export const settingsAPI = {
+  get:    ()      => client.get('/settings/'),
+  update: (data)  => client.patch('/settings/', data),
+}
+
+// ── Notifications ─────────────────────────────────────
+export const notificationsAPI = {
+  list:  (params) => client.get('/notifications/', { params }),
+  stats: ()       => client.get('/notifications/stats/'),
+}

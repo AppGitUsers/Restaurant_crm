@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, UtensilsCrossed, Package, Receipt,
-  TrendingUp, Users, UserCog, ChevronRight
+  TrendingUp, Users, UserCog, ChevronRight, Settings
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -13,6 +13,7 @@ const NAV = [
   { to: '/finance',       icon: TrendingUp,       label: 'Finance'    },
   { to: '/staff',         icon: UserCog,          label: 'Staff'      },
   { to: '/customers',     icon: Users,            label: 'Customers'  },
+  { to: '/settings',      icon: Settings,         label: 'Settings'   },
 ]
 
 export default function Sidebar() {
