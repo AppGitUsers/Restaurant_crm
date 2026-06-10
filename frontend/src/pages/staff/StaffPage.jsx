@@ -700,63 +700,269 @@ function AttendanceTab() {
 
 // ── Payments Tab ──────────────────────────────────────
 function PaymentsTab() {
-  const qc = useQueryClient()
-  const [modal, setModal] = useState(false)
-  const [form, setForm]   = useState({ employee: '', payment_type: 'SALARY', amount: '', payment_date: new Date().toISOString().split('T')[0], period_start: '', period_end: '', notes: '' })
+  const qc    = useQueryClient()
+  const today = new Date()
 
-  const { data, isLoading } = useQuery({ queryKey: ['staff-payments'], queryFn: () => staffAPI.payments.list().then(r => r.data.results || r.data) })
-  const { data: emps }      = useQuery({ queryKey: ['employees'], queryFn: () => staffAPI.employees.list().then(r => r.data.results || r.data) })
+  const [year,  setYear]  = useState(today.getFullYear())
+  const [month, setMonth] = useState(today.getMonth() + 1)
+  const [confirmEmp, setConfirmEmp] = useState(null)
 
-  const save = useMutation({
-    mutationFn: d => staffAPI.payments.create(d),
-    onSuccess: () => { qc.invalidateQueries(['staff-payments']); setModal(false); toast.success('Payment recorded') },
+  const goPrev = () => {
+    if (month === 1) { setMonth(12); setYear(y => y - 1) }
+    else setMonth(m => m - 1)
+  }
+  const goNext = () => {
+    if (month === 12) { setMonth(1); setYear(y => y + 1) }
+    else setMonth(m => m + 1)
+  }
+
+  const monthLabel  = format(new Date(year, month - 1, 1), 'MMMM yyyy')
+  const periodStart = `${year}-${String(month).padStart(2, '0')}-01`
+  const periodEnd   = `${year}-${String(month).padStart(2, '0')}-${String(getDaysInMonth(new Date(year, month - 1, 1))).padStart(2, '0')}`
+
+  const { data: rows = [], isLoading, isError, error } = useQuery({
+    queryKey: ['staff-monthly-summary', year, month],
+    queryFn:  () => staffAPI.attendance.monthlySummary({ year, month }).then(r => r.data),
+    retry: 1,
   })
 
-  const payments = data || []
+  const pay = useMutation({
+    mutationFn: data => staffAPI.payments.create(data),
+    onSuccess:  () => {
+      qc.invalidateQueries(['staff-monthly-summary', year, month])
+      setConfirmEmp(null)
+      toast.success('Payment recorded — Finance updated')
+    },
+    onError: () => toast.error('Failed to record payment'),
+  })
+
+  const handlePay = () => {
+    if (!confirmEmp) return
+    pay.mutate({
+      employee:      confirmEmp.employee_id,
+      payment_type:  'SALARY',
+      amount:        confirmEmp.calculated_salary,
+      payment_date:  today.toISOString().split('T')[0],
+      period_start:  periodStart,
+      period_end:    periodEnd,
+      hours_worked:  confirmEmp.hours_worked,
+      notes:         `Monthly salary for ${monthLabel} — attendance ${confirmEmp.attendance_pct}%`,
+    })
+  }
+
+  const pctColor = pct => {
+    if (pct >= 90) return 'text-green-600'
+    if (pct >= 70) return 'text-yellow-600'
+    if (pct >= 50) return 'text-orange-500'
+    return 'text-red-500'
+  }
+  const barColor = pct => {
+    if (pct >= 90) return 'bg-green-500'
+    if (pct >= 70) return 'bg-yellow-400'
+    if (pct >= 50) return 'bg-orange-400'
+    return 'bg-red-400'
+  }
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
-        <button onClick={() => setModal(true)} className="btn-primary"><Plus size={15} />Record Payment</button>
+      {/* Month Navigation */}
+      <div className="flex items-center justify-center gap-3 mb-6">
+        <button onClick={goPrev} className="btn-ghost p-2 rounded-lg"><ChevronLeft size={18} /></button>
+        <div className="flex items-center gap-2 bg-primary-50 border border-primary-200 rounded-xl px-5 py-2">
+          <Calendar size={16} className="text-primary-500" />
+          <span className="text-base font-semibold text-primary-700 min-w-[140px] text-center">{monthLabel}</span>
+        </div>
+        <button onClick={goNext} className="btn-ghost p-2 rounded-lg"><ChevronRight size={18} /></button>
       </div>
+
       <div className="table-container">
         <table className="table">
-          <thead><tr><th>Employee</th><th>Type</th><th>Amount</th><th>Period</th><th>Date</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Shift</th>
+              <th className="text-center">Working Days</th>
+              <th className="text-center">Required Hrs</th>
+              <th className="text-center">Hrs Worked</th>
+              <th className="text-center">Attendance</th>
+              <th className="text-right">Full Salary</th>
+              <th className="text-right">Due Salary</th>
+              <th className="text-right">Action</th>
+            </tr>
+          </thead>
           <tbody>
-            {isLoading && <tr><td colSpan={5} className="text-center py-8 text-gray-400">Loading…</td></tr>}
-            {payments.map(p => (
-              <tr key={p.id}>
-                <td className="font-medium">{p.employee_name}</td>
-                <td><span className="badge-gold text-xs">{p.payment_type}</span></td>
-                <td className="font-semibold text-primary-600">₹{parseFloat(p.amount).toLocaleString()}</td>
-                <td className="text-gray-400 text-xs">{p.period_start && p.period_end ? `${p.period_start} → ${p.period_end}` : '—'}</td>
-                <td>{p.payment_date}</td>
+            {isLoading && (
+              <tr><td colSpan={9} className="text-center py-10 text-gray-400">Loading staff data…</td></tr>
+            )}
+            {!isLoading && isError && (
+              <tr>
+                <td colSpan={9} className="text-center py-10">
+                  <div className="flex flex-col items-center gap-2 text-red-500">
+                    <AlertCircle size={28} />
+                    <span className="font-medium">Failed to load staff data</span>
+                    <span className="text-xs text-gray-400">{error?.response?.data?.detail || error?.message || 'Unknown error'}</span>
+                  </div>
+                </td>
+              </tr>
+            )}
+            {!isLoading && !isError && rows.length === 0 && (
+              <tr><td colSpan={9}><Empty message="No staff found" /></td></tr>
+            )}
+            {rows.map(emp => (
+              <tr key={emp.employee_id}>
+                {/* Employee */}
+                <td>
+                  <div className="font-semibold text-gray-800">{emp.employee_name}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">{emp.department}</div>
+                </td>
+                {/* Shift */}
+                <td>
+                  <div className="text-sm text-gray-700">{emp.shift_name}</div>
+                  <div className="text-xs text-gray-400">{emp.shift_hours}h / day</div>
+                </td>
+                {/* Working days */}
+                <td className="text-center">
+                  <div className="font-semibold text-gray-800">{emp.working_days} days</div>
+                  <div className="text-xs text-gray-400 space-x-1 mt-0.5">
+                    <span className="text-green-600">P:{emp.present_days}</span>
+                    <span className="text-yellow-500">H:{emp.half_days}</span>
+                    <span className="text-red-400">A:{emp.absent_days}</span>
+                  </div>
+                </td>
+                {/* Required hours */}
+                <td className="text-center">
+                  <span className="font-medium text-gray-700">{emp.required_hours}h</span>
+                </td>
+                {/* Hours worked */}
+                <td className="text-center">
+                  <span className={`font-semibold ${emp.hours_worked >= emp.required_hours ? 'text-green-600' : 'text-gray-700'}`}>
+                    {emp.hours_worked}h
+                  </span>
+                </td>
+                {/* Attendance % + bar */}
+                <td className="text-center min-w-[90px]">
+                  <span className={`font-bold text-sm ${pctColor(emp.attendance_pct)}`}>
+                    {emp.attendance_pct}%
+                  </span>
+                  <div className="w-full bg-gray-100 rounded-full h-1.5 mt-1">
+                    <div
+                      className={`h-1.5 rounded-full transition-all ${barColor(emp.attendance_pct)}`}
+                      style={{ width: `${Math.min(100, emp.attendance_pct)}%` }}
+                    />
+                  </div>
+                </td>
+                {/* Full salary */}
+                <td className="text-right text-gray-400 text-sm">
+                  ₹{emp.full_salary.toLocaleString()}
+                </td>
+                {/* Due salary */}
+                <td className="text-right">
+                  <span className="font-bold text-primary-600 text-base">
+                    ₹{emp.calculated_salary.toLocaleString()}
+                  </span>
+                </td>
+                {/* Action */}
+                <td className="text-right">
+                  {emp.paid_this_month ? (
+                    <span className="badge-green inline-flex items-center gap-1 text-xs px-3 py-1.5">
+                      <Check size={12} /> Paid
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmEmp(emp)}
+                      disabled={emp.calculated_salary <= 0}
+                      className="btn-primary py-1.5 px-3 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <CreditCard size={13} />
+                      Pay ₹{emp.calculated_salary.toLocaleString()}
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
-            {!isLoading && payments.length === 0 && <tr><td colSpan={5}><Empty message="No payment records" /></td></tr>}
           </tbody>
         </table>
       </div>
-      <Modal open={modal} onClose={() => setModal(false)} title="Record Staff Payment"
-        footer={<><button onClick={() => setModal(false)} className="btn-ghost">Cancel</button><button onClick={() => save.mutate(form)} disabled={save.isPending} className="btn-primary">Save</button></>}>
-        <Field label="Employee" required>
-          <select className="select" value={form.employee} onChange={e => setForm({ ...form, employee: e.target.value })}>
-            <option value="">Select…</option>
-            {(emps || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Payment Type">
-          <select className="select" value={form.payment_type} onChange={e => setForm({ ...form, payment_type: e.target.value })}>
-            {['SALARY','ADVANCE','BONUS','OTHER'].map(t => <option key={t}>{t}</option>)}
-          </select>
-        </Field>
-        <Field label="Amount (₹)" required><input type="number" step="0.01" className="input" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></Field>
-        <Field label="Payment Date"><input type="date" className="input" value={form.payment_date} onChange={e => setForm({ ...form, payment_date: e.target.value })} /></Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Period Start"><input type="date" className="input" value={form.period_start} onChange={e => setForm({ ...form, period_start: e.target.value })} /></Field>
-          <Field label="Period End"><input type="date" className="input" value={form.period_end} onChange={e => setForm({ ...form, period_end: e.target.value })} /></Field>
-        </div>
-        <Field label="Notes"><input className="input" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></Field>
+
+      {/* Pay Confirmation Modal */}
+      <Modal
+        open={!!confirmEmp}
+        onClose={() => !pay.isPending && setConfirmEmp(null)}
+        title="Confirm Salary Payment"
+        size="md"
+        footer={
+          <>
+            <button onClick={() => setConfirmEmp(null)} disabled={pay.isPending} className="btn-ghost">
+              Cancel
+            </button>
+            <button onClick={handlePay} disabled={pay.isPending} className="btn-primary">
+              <CreditCard size={14} />
+              {pay.isPending ? 'Processing…' : `Confirm & Pay ₹${confirmEmp?.calculated_salary?.toLocaleString()}`}
+            </button>
+          </>
+        }
+      >
+        {confirmEmp && (
+          <div className="space-y-4">
+            {/* Employee info */}
+            <div className="flex items-start gap-3 bg-gray-50 rounded-xl p-4">
+              <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center shrink-0">
+                <span className="text-primary-600 font-bold text-sm">
+                  {confirmEmp.employee_name.charAt(0).toUpperCase()}
+                </span>
+              </div>
+              <div>
+                <div className="font-bold text-gray-800 text-base">{confirmEmp.employee_name}</div>
+                <div className="text-sm text-gray-500">{confirmEmp.department} · {confirmEmp.shift_name}</div>
+              </div>
+            </div>
+
+            {/* Stats grid */}
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-gray-400 text-xs mb-0.5">Period</div>
+                <div className="font-semibold text-gray-700">{monthLabel}</div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-gray-400 text-xs mb-0.5">Attendance</div>
+                <div className={`font-bold ${pctColor(confirmEmp.attendance_pct)}`}>
+                  {confirmEmp.attendance_pct}%
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-gray-400 text-xs mb-0.5">Hours Worked</div>
+                <div className="font-semibold text-gray-700">
+                  {confirmEmp.hours_worked}h
+                  <span className="text-gray-400 font-normal"> / {confirmEmp.required_hours}h</span>
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-gray-400 text-xs mb-0.5">Attendance Breakdown</div>
+                <div className="text-xs space-x-1.5">
+                  <span className="text-green-600 font-medium">P:{confirmEmp.present_days}</span>
+                  <span className="text-yellow-500 font-medium">H:{confirmEmp.half_days}</span>
+                  <span className="text-red-400 font-medium">A:{confirmEmp.absent_days}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Amount banner */}
+            <div className="bg-primary-600 text-white rounded-xl p-4 flex justify-between items-center">
+              <div>
+                <div className="text-xs opacity-70 mb-0.5">Amount to Pay</div>
+                <div className="text-3xl font-bold">₹{confirmEmp.calculated_salary.toLocaleString()}</div>
+              </div>
+              <div className="text-right text-xs opacity-70 leading-relaxed">
+                {confirmEmp.attendance_pct}% of<br />
+                <span className="text-base font-semibold opacity-90">₹{confirmEmp.full_salary.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-400 text-center">
+              This payment will automatically appear as an expense in the Finance dashboard.
+            </p>
+          </div>
+        )}
       </Modal>
     </div>
   )

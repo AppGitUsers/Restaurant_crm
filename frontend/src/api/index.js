@@ -127,11 +127,12 @@ export const staffAPI = {
     paymentHistory:     (id)          => client.get(`/staff/employees/${id}/payment_history/`),
   },
   attendance: {
-    list:        (params)         => client.get('/staff/attendance/', { params }),
-    byDate:      (date)           => client.get('/staff/attendance/by_date/', { params: { date } }),
-    todayRecord: (empId, date)    => client.get('/staff/attendance/', { params: { employee: empId, date } }),
-    create:      (data)           => client.post('/staff/attendance/', data),
-    update:      (id, data)       => client.patch(`/staff/attendance/${id}/`, data),
+    list:           (params)         => client.get('/staff/attendance/', { params }),
+    byDate:         (date)           => client.get('/staff/attendance/by_date/', { params: { date } }),
+    todayRecord:    (empId, date)    => client.get('/staff/attendance/', { params: { employee: empId, date } }),
+    create:         (data)           => client.post('/staff/attendance/', data),
+    update:         (id, data)       => client.patch(`/staff/attendance/${id}/`, data),
+    monthlySummary: (params)         => client.get('/staff/attendance/monthly_summary/', { params }),
   },
   payments: {
     list:   (params)    => client.get('/staff/payments/', { params }),
