@@ -94,7 +94,7 @@ def start_scheduler():
     scheduler.add_job(
         check_auto_absent,
         trigger='cron',
-        minute=49,
+        minute=0,
         id='auto_absent_check',
         replace_existing=True,
         misfire_grace_time=300,
