@@ -49,6 +49,7 @@ def handle_order_paid(sender, instance, **kwargs):
             defaults=dict(
                 tx_type     = 'INCOME',
                 amount      = instance.total_amount,
+                tax_amount  = instance.tax_amount,
                 category    = 'SALE',
                 description = f"Order {instance.order_number} — {instance.customer_name or 'Walk-in'}",
             )

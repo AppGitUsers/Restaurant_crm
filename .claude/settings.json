@@ -21,7 +21,8 @@
       "Bash(\"d:/Projects/Restaurant_crm/backend/venv/Scripts/python.exe\" \"d:/Projects/Restaurant_crm/backend/manage.py\" check)",
       "Read(//d/Projects/**)",
       "Bash(grep -r \"queue_and_send\\\\|send_whatsapp_message\\\\|BILL\\\\|ABSENT_STAFF\" /d/Projects/Restaurant_crm/backend/apps --include=\"*.py\" ! -path \"*/__pycache__/*\" ! -path \"*/migrations/*\" ! -path \"*/venv/*\")",
-      "Read(//c//**)"
+      "Read(//c//**)",
+      "Bash(\"d:/Projects/Restaurant_crm/backend/venv/Scripts/python.exe\" manage.py migrate finance)"
     ]
   }
 }

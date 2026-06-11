@@ -17,6 +17,7 @@ class Transaction(models.Model):
 
     tx_type     = models.CharField(max_length=10, choices=TxType.choices)
     amount      = models.DecimalField(max_digits=12, decimal_places=2)
+    tax_amount  = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     category    = models.CharField(max_length=30, choices=Category.choices, default=Category.MISC)
     description = models.TextField(blank=True)
     reference   = models.CharField(max_length=200, blank=True)

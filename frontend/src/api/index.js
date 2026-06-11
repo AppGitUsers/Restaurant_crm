@@ -87,10 +87,13 @@ export const billingAPI = {
 
 // ── Finance ───────────────────────────────────────────
 export const financeAPI = {
-  summary:      (params)    => client.get('/finance/summary/', { params }),
+  summary:       (params)        => client.get('/finance/summary/', { params }),
+  monthlyReport: (year, month)   => client.get('/finance/monthly_report/', { params: { year, month }, responseType: 'blob' }),
+  monthlyData:   (year, month)   => client.get('/finance/monthly_data/',   { params: { year, month } }),
   transactions: {
-    list:   (params)    => client.get('/finance/transactions/', { params }),
-    create: (data)      => client.post('/finance/transactions/', data),
+    list:         (params)        => client.get('/finance/transactions/', { params }),
+    create:       (data)          => client.post('/finance/transactions/', data),
+    secureDelete: (id, password)  => client.post(`/finance/transactions/${id}/secure_delete/`, { password }),
   },
   expenses: {
     list:   (params)    => client.get('/finance/expenses/', { params }),

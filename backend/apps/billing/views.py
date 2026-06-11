@@ -48,7 +48,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Cannot pay a cancelled order.'}, status=400)
         order.payment_method = payment_method
         order.status         = 'PAID'
-        order.save()
+        order.save()  # triggers billing/signals.py → handle_order_paid → creates income Transaction
 
         # WhatsApp bill notification (non-blocking — never breaks the payment flow)
         try:
