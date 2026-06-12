@@ -57,11 +57,11 @@ def handle_order_paid(sender, instance, **kwargs):
     except Exception:
         pass
 
-    # Link/create customer visit
+    # Link/create customer visit; always sync name from the order
     try:
         if instance.customer_phone:
             from apps.customers.models import Customer, Visit
-            customer, _ = Customer.objects.get_or_create(
+            customer, _ = Customer.objects.update_or_create(
                 phone=instance.customer_phone,
                 defaults={'name': instance.customer_name or 'Unknown'}
             )

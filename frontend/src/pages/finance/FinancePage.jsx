@@ -19,6 +19,9 @@ export default function FinancePage() {
   const [rptMonth, setRptMonth] = useState(now.getMonth() + 1)
   const [downloading, setDownloading] = useState(false)
 
+  // Report sub-section
+  const [reportSection, setReportSection] = useState('income')
+
   // Delete with password confirmation
   const [deleteModal,    setDeleteModal]    = useState(false)
   const [deleteTarget,   setDeleteTarget]   = useState(null)   // { txId, label }
@@ -256,48 +259,47 @@ export default function FinancePage() {
 
       {/* ── Reports ── */}
       {tab === 'reports' && (
-        <div className="space-y-6">
+        <div className="space-y-5">
 
-          {/* Download card */}
-          <div className="max-w-md">
-            <div className="card space-y-5">
-              <div className="flex items-center gap-3">
-                <FileSpreadsheet size={24} className="text-primary-500" />
-                <div>
-                  <p className="font-semibold text-gray-800">Monthly Finance Report</p>
-                  <p className="text-xs text-gray-400">Income sheet (bills, base + GST) & Expense sheet</p>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="text-xs text-gray-500 mb-1 block">Month</label>
-                  <select className="select w-full" value={rptMonth} onChange={e => setRptMonth(Number(e.target.value))}>
-                    {MONTHS.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-                  </select>
-                </div>
-                <div className="w-28">
-                  <label className="text-xs text-gray-500 mb-1 block">Year</label>
-                  <input type="number" className="input" value={rptYear} min={2020} max={2099}
-                    onChange={e => setRptYear(Number(e.target.value))} />
-                </div>
-              </div>
-
-              <button onClick={downloadReport} disabled={downloading} className="btn-primary w-full justify-center">
-                <Download size={15} />
-                {downloading ? 'Downloading…' : `Download ${MONTHS[rptMonth - 1]} ${rptYear} Report`}
-              </button>
+          {/* Top row: month/year picker + download */}
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Month</label>
+              <select className="select" value={rptMonth} onChange={e => setRptMonth(Number(e.target.value))}>
+                {MONTHS.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+              </select>
             </div>
+            <div className="w-28">
+              <label className="text-xs text-gray-500 mb-1 block">Year</label>
+              <input type="number" className="input" value={rptYear} min={2020} max={2099}
+                onChange={e => setRptYear(Number(e.target.value))} />
+            </div>
+            <button onClick={downloadReport} disabled={downloading} className="btn-primary">
+              <Download size={15} />
+              {downloading ? 'Downloading…' : `Download ${MONTHS[rptMonth - 1]} ${rptYear} Report`}
+            </button>
+          </div>
+
+          {/* Income / Expenses sub-tabs */}
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+            <button
+              onClick={() => setReportSection('income')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${reportSection === 'income' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Income
+              {incomeRows.length > 0 && <span className="ml-1.5 text-xs text-gray-400">({incomeRows.length})</span>}
+            </button>
+            <button
+              onClick={() => setReportSection('expenses')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${reportSection === 'expenses' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Expenses
+              {expenseRows.length > 0 && <span className="ml-1.5 text-xs text-gray-400">({expenseRows.length})</span>}
+            </button>
           </div>
 
           {/* ── Income table ── */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="section-title mb-0">
-                Income — {MONTHS[rptMonth - 1]} {rptYear}
-                <span className="ml-2 text-xs font-normal text-gray-400">({incomeRows.length} records)</span>
-              </h3>
-            </div>
+          {reportSection === 'income' && (
             <div className="table-container">
               <table className="table">
                 <thead>
@@ -355,16 +357,10 @@ export default function FinancePage() {
                 </tbody>
               </table>
             </div>
-          </div>
+          )}
 
           {/* ── Expense table ── */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="section-title mb-0">
-                Expenses — {MONTHS[rptMonth - 1]} {rptYear}
-                <span className="ml-2 text-xs font-normal text-gray-400">({expenseRows.length} records)</span>
-              </h3>
-            </div>
+          {reportSection === 'expenses' && (
             <div className="table-container">
               <table className="table">
                 <thead>
@@ -408,7 +404,7 @@ export default function FinancePage() {
                 </tbody>
               </table>
             </div>
-          </div>
+          )}
 
         </div>
       )}

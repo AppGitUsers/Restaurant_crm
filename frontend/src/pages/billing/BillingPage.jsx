@@ -697,6 +697,9 @@ export default function BillingPage() {
       useCartStore.getState().clearCart()
       setBill(order)
       qc.invalidateQueries(['billing-items'])
+      if (order.customer_phone) {
+        qc.invalidateQueries(['customer-phone-lookup', order.customer_phone])
+      }
       toast.success('Order placed and paid!')
     },
     onError: (err) => {

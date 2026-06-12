@@ -271,7 +271,7 @@ class MonthlyDataView(APIView):
             status='PAID',
             created_at__year=year,
             created_at__month=month,
-        ).order_by('created_at')
+        ).order_by('-created_at')
 
         # Map order reference -> Transaction.id for deletion
         refs   = [f"order:{o.order_number}" for o in orders]
@@ -302,7 +302,7 @@ class MonthlyDataView(APIView):
             tx_type='EXPENSE',
             tx_date__year=year,
             tx_date__month=month,
-        ).order_by('tx_date')
+        ).order_by('-tx_date')
 
         expense_rows = [
             {
