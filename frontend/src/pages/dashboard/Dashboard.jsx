@@ -62,11 +62,11 @@ export default function Dashboard() {
           <h1 className="page-title">Dashboard</h1>
           <p className="page-subtitle">Overview of your restaurant operations</p>
         </div>
-        <span className="text-sm text-gray-400">{format(new Date(), 'EEEE, dd MMMM yyyy')}</span>
+        <span className="text-xs sm:text-sm text-gray-400 hidden sm:block">{format(new Date(), 'EEEE, dd MMMM yyyy')}</span>
       </div>
 
       {/* KPI row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <KpiCard
           title="Today's Revenue"
           value={`₹${today.revenue.toLocaleString()}`}
@@ -97,7 +97,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <KpiCard
           title="Low Stock Alerts"
           value={inventory.low_stock_count}
@@ -129,7 +129,7 @@ export default function Dashboard() {
       </div>
 
       {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
         {/* Income vs Expense area chart */}
         <div className="card lg:col-span-2">
           <p className="section-title">Income vs Expense — Last 14 Days</p>
@@ -179,7 +179,7 @@ export default function Dashboard() {
       </div>
 
       {/* Tables row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
         {/* Top selling items */}
         <div className="card">
           <p className="section-title">
@@ -239,7 +239,7 @@ export default function Dashboard() {
       </div>
 
       {/* Low makeable + attendance */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
         <div className="card">
           <p className="section-title">
             <AlertTriangle size={16} className="text-gold-400" />

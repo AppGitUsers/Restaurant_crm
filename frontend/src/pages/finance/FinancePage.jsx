@@ -122,20 +122,22 @@ export default function FinancePage() {
         <button onClick={() => setExpModal(true)} className="btn-secondary"><Plus size={15} />Add Expense</button>
       </div>
 
-      <div className="flex gap-1 mb-6 bg-gray-100 rounded-xl p-1 w-fit">
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === t.id ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            {t.label}
-          </button>
-        ))}
+      <div className="overflow-x-auto mb-6 -mx-1 px-1">
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit min-w-max">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${tab === t.id ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── Overview ── */}
       {tab === 'overview' && s && (
         <div className="space-y-5">
           {/* Row 1 — all-time */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <KpiCard title="Total Income"  value={`₹${parseFloat(s.total_income).toLocaleString()}`}  icon={<TrendingUp size={22} />}   color="primary" />
             <KpiCard title="Total Expense" value={`₹${parseFloat(s.total_expense).toLocaleString()}`} icon={<TrendingDown size={22} />} color="gold" />
             <KpiCard title="Net Profit"    value={`₹${parseFloat(s.net_profit).toLocaleString()}`}    icon={<DollarSign size={22} />}   color={s.net_profit >= 0 ? 'primary' : 'red'} />
@@ -149,7 +151,7 @@ export default function FinancePage() {
           </div>
 
           {/* Row 2 — this month */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <div className="card flex flex-col gap-1 p-4">
               <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Month Income</p>
               <p className="text-2xl font-bold text-primary-600">₹{parseFloat(s.month_income).toLocaleString()}</p>
@@ -203,7 +205,8 @@ export default function FinancePage() {
       {/* ── Expenses ── */}
       {tab === 'expenses' && (
         <div>
-          <div className="table-container">
+          {/* Desktop table */}
+          <div className="hidden sm:block table-container">
             <table className="table">
               <thead><tr><th>Title</th><th>Category</th><th>Amount</th><th>Date</th><th>Actions</th></tr></thead>
               <tbody>
@@ -221,13 +224,32 @@ export default function FinancePage() {
               </tbody>
             </table>
           </div>
+          {/* Mobile cards */}
+          <div className="sm:hidden space-y-3">
+            {expLoading && <p className="text-center py-8 text-gray-400">Loading…</p>}
+            {(expenses || []).map(e => (
+              <div key={e.id} className="card flex flex-col gap-2">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-semibold text-gray-800">{e.title}</p>
+                  <button onClick={() => delExp.mutate(e.id)} className="btn-ghost py-1 text-red-400 text-xs flex-shrink-0"><Trash2 size={12} /></button>
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="badge-gold text-xs">{e.category}</span>
+                  <span className="font-semibold text-gray-700">₹{parseFloat(e.amount).toLocaleString()}</span>
+                  <span className="text-xs text-gray-400">{e.expense_date}</span>
+                </div>
+              </div>
+            ))}
+            {!expLoading && (expenses || []).length === 0 && <Empty message="No expenses recorded" />}
+          </div>
         </div>
       )}
 
       {/* ── All Transactions ── */}
       {tab === 'transactions' && (
         <div>
-          <div className="table-container">
+          {/* Desktop table */}
+          <div className="hidden sm:block table-container">
             <table className="table">
               <thead>
                 <tr><th>Type</th><th>Category</th><th>Amount</th><th>GST</th><th>Description</th><th>Date</th></tr>
@@ -253,6 +275,29 @@ export default function FinancePage() {
                 {!txLoading && (txns || []).length === 0 && <tr><td colSpan={6}><Empty message="No transactions" /></td></tr>}
               </tbody>
             </table>
+          </div>
+          {/* Mobile cards */}
+          <div className="sm:hidden space-y-3">
+            {txLoading && <p className="text-center py-8 text-gray-400">Loading…</p>}
+            {(txns || []).map(t => (
+              <div key={t.id} className="card flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <StatusBadge status={t.tx_type} />
+                  <span className="text-xs text-gray-400">{t.tx_date}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`text-lg font-bold ${t.tx_type === 'INCOME' ? 'text-primary-600' : 'text-red-600'}`}>
+                    {t.tx_type === 'INCOME' ? '+' : '-'}₹{parseFloat(t.amount).toLocaleString()}
+                  </span>
+                  <span className="badge-gray text-xs">{t.category}</span>
+                </div>
+                {t.tax_amount > 0 && (
+                  <p className="text-xs text-emerald-600">GST: ₹{parseFloat(t.tax_amount).toFixed(2)}</p>
+                )}
+                {t.description && <p className="text-xs text-gray-500">{t.description}</p>}
+              </div>
+            ))}
+            {!txLoading && (txns || []).length === 0 && <Empty message="No transactions" />}
           </div>
         </div>
       )}
@@ -284,14 +329,14 @@ export default function FinancePage() {
           <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
             <button
               onClick={() => setReportSection('income')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${reportSection === 'income' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${reportSection === 'income' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
             >
               Income
               {incomeRows.length > 0 && <span className="ml-1.5 text-xs text-gray-400">({incomeRows.length})</span>}
             </button>
             <button
               onClick={() => setReportSection('expenses')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${reportSection === 'expenses' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${reportSection === 'expenses' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
             >
               Expenses
               {expenseRows.length > 0 && <span className="ml-1.5 text-xs text-gray-400">({expenseRows.length})</span>}
@@ -300,109 +345,159 @@ export default function FinancePage() {
 
           {/* ── Income table ── */}
           {reportSection === 'income' && (
-            <div className="table-container">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Order #</th>
-                    <th>Customer</th>
-                    <th>Phone</th>
-                    <th>Bill Amount</th>
-                    <th>Base Amount</th>
-                    <th>GST %</th>
-                    <th>GST Amount</th>
-                    <th>Payment</th>
-                    <th>Date</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mdLoading && <tr><td colSpan={10} className="text-center py-8 text-gray-400">Loading…</td></tr>}
-                  {incomeRows.map((row, i) => (
-                    <tr key={row.tx_id ?? i}>
-                      <td className="font-mono text-xs text-gray-600">{row.order_number}</td>
-                      <td className="font-medium">{row.customer_name}</td>
-                      <td className="text-gray-500 text-sm">{row.customer_phone}</td>
-                      <td className="font-semibold text-primary-600">₹{row.bill_amount.toLocaleString()}</td>
-                      <td className="text-gray-700">₹{row.base_amount.toLocaleString()}</td>
-                      <td className="text-gray-500">{row.gst_percent}%</td>
-                      <td className="text-emerald-600 font-medium">₹{row.gst_amount.toLocaleString()}</td>
-                      <td><span className="badge-gray text-xs">{row.payment_method}</span></td>
-                      <td className="text-gray-400 text-sm">{row.date}</td>
-                      <td>
-                        <button
-                          disabled={!row.tx_id}
-                          onClick={() => openDelete(row.tx_id, `Order ${row.order_number} — ${row.customer_name}`)}
-                          className="btn-ghost py-1 text-red-400 disabled:opacity-30 disabled:cursor-not-allowed"
-                          title="Delete income record"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </td>
+            <div>
+              {/* Desktop table */}
+              <div className="hidden sm:block table-container">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Order #</th><th>Customer</th><th>Phone</th><th>Bill Amount</th>
+                      <th>Base Amount</th><th>GST %</th><th>GST Amount</th><th>Payment</th><th>Date</th><th></th>
                     </tr>
-                  ))}
-                  {!mdLoading && incomeRows.length === 0 && (
-                    <tr><td colSpan={10}><Empty message={`No income records for ${MONTHS[rptMonth - 1]} ${rptYear}`} /></td></tr>
-                  )}
-                  {incomeRows.length > 0 && (
-                    <tr className="bg-emerald-50 font-semibold">
-                      <td colSpan={3} className="text-gray-600">TOTAL</td>
-                      <td className="text-primary-700">₹{incTotal.toLocaleString()}</td>
-                      <td className="text-gray-700">₹{incBase.toLocaleString()}</td>
-                      <td></td>
-                      <td className="text-emerald-700">₹{incGst.toLocaleString()}</td>
-                      <td colSpan={3}></td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {mdLoading && <tr><td colSpan={10} className="text-center py-8 text-gray-400">Loading…</td></tr>}
+                    {incomeRows.map((row, i) => (
+                      <tr key={row.tx_id ?? i}>
+                        <td className="font-mono text-xs text-gray-600">{row.order_number}</td>
+                        <td className="font-medium">{row.customer_name}</td>
+                        <td className="text-gray-500 text-sm">{row.customer_phone}</td>
+                        <td className="font-semibold text-primary-600">₹{row.bill_amount.toLocaleString()}</td>
+                        <td className="text-gray-700">₹{row.base_amount.toLocaleString()}</td>
+                        <td className="text-gray-500">{row.gst_percent}%</td>
+                        <td className="text-emerald-600 font-medium">₹{row.gst_amount.toLocaleString()}</td>
+                        <td><span className="badge-gray text-xs">{row.payment_method}</span></td>
+                        <td className="text-gray-400 text-sm">{row.date}</td>
+                        <td>
+                          <button disabled={!row.tx_id}
+                            onClick={() => openDelete(row.tx_id, `Order ${row.order_number} — ${row.customer_name}`)}
+                            className="btn-ghost py-1 text-red-400 disabled:opacity-30 disabled:cursor-not-allowed">
+                            <Trash2 size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {!mdLoading && incomeRows.length === 0 && (
+                      <tr><td colSpan={10}><Empty message={`No income records for ${MONTHS[rptMonth - 1]} ${rptYear}`} /></td></tr>
+                    )}
+                    {incomeRows.length > 0 && (
+                      <tr className="bg-emerald-50 font-semibold">
+                        <td colSpan={3} className="text-gray-600">TOTAL</td>
+                        <td className="text-primary-700">₹{incTotal.toLocaleString()}</td>
+                        <td className="text-gray-700">₹{incBase.toLocaleString()}</td>
+                        <td></td>
+                        <td className="text-emerald-700">₹{incGst.toLocaleString()}</td>
+                        <td colSpan={3}></td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              {/* Mobile cards */}
+              <div className="sm:hidden space-y-3">
+                {mdLoading && <p className="text-center py-8 text-gray-400">Loading…</p>}
+                {incomeRows.map((row, i) => (
+                  <div key={row.tx_id ?? i} className="card flex flex-col gap-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-gray-800">{row.customer_name}</p>
+                        <p className="text-xs text-gray-400">{row.customer_phone}</p>
+                      </div>
+                      <button disabled={!row.tx_id}
+                        onClick={() => openDelete(row.tx_id, `Order ${row.order_number} — ${row.customer_name}`)}
+                        className="btn-ghost py-1 text-red-400 disabled:opacity-30 text-xs">
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                      <span className="text-gray-400 text-xs">Order #</span><span className="font-mono text-xs text-gray-600">{row.order_number}</span>
+                      <span className="text-gray-400 text-xs">Bill Amount</span><span className="font-semibold text-primary-600">₹{row.bill_amount.toLocaleString()}</span>
+                      <span className="text-gray-400 text-xs">Base Amount</span><span className="text-gray-700">₹{row.base_amount.toLocaleString()}</span>
+                      <span className="text-gray-400 text-xs">GST ({row.gst_percent}%)</span><span className="text-emerald-600">₹{row.gst_amount.toLocaleString()}</span>
+                      <span className="text-gray-400 text-xs">Payment</span><span className="badge-gray text-xs w-fit">{row.payment_method}</span>
+                      <span className="text-gray-400 text-xs">Date</span><span className="text-gray-500 text-xs">{row.date}</span>
+                    </div>
+                  </div>
+                ))}
+                {!mdLoading && incomeRows.length === 0 && <Empty message={`No income records for ${MONTHS[rptMonth - 1]} ${rptYear}`} />}
+                {incomeRows.length > 0 && (
+                  <div className="card bg-emerald-50 border-emerald-200">
+                    <div className="flex justify-between text-sm font-semibold">
+                      <span className="text-gray-600">TOTAL</span>
+                      <div className="text-right space-y-0.5">
+                        <p className="text-primary-700">₹{incTotal.toLocaleString()}</p>
+                        <p className="text-xs text-gray-500">Base: ₹{incBase.toLocaleString()} · GST: ₹{incGst.toLocaleString()}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
           {/* ── Expense table ── */}
           {reportSection === 'expenses' && (
-            <div className="table-container">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Category</th>
-                    <th>Description</th>
-                    <th>Amount</th>
-                    <th>Date</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mdLoading && <tr><td colSpan={5} className="text-center py-8 text-gray-400">Loading…</td></tr>}
-                  {expenseRows.map(row => (
-                    <tr key={row.tx_id}>
-                      <td><span className="badge-gold text-xs">{row.category}</span></td>
-                      <td className="text-gray-600 text-sm max-w-xs truncate">{row.description}</td>
-                      <td className="font-semibold text-red-600">₹{row.amount.toLocaleString()}</td>
-                      <td className="text-gray-400 text-sm">{row.date}</td>
-                      <td>
-                        <button
-                          onClick={() => openDelete(row.tx_id, row.description || row.category)}
-                          className="btn-ghost py-1 text-red-400"
-                          title="Delete expense record"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {!mdLoading && expenseRows.length === 0 && (
-                    <tr><td colSpan={5}><Empty message={`No expense records for ${MONTHS[rptMonth - 1]} ${rptYear}`} /></td></tr>
-                  )}
-                  {expenseRows.length > 0 && (
-                    <tr className="bg-amber-50 font-semibold">
-                      <td colSpan={2} className="text-gray-600">TOTAL</td>
-                      <td className="text-red-700">₹{expTotal.toLocaleString()}</td>
-                      <td colSpan={2}></td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+            <div>
+              {/* Desktop table */}
+              <div className="hidden sm:block table-container">
+                <table className="table">
+                  <thead>
+                    <tr><th>Category</th><th>Description</th><th>Amount</th><th>Date</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {mdLoading && <tr><td colSpan={5} className="text-center py-8 text-gray-400">Loading…</td></tr>}
+                    {expenseRows.map(row => (
+                      <tr key={row.tx_id}>
+                        <td><span className="badge-gold text-xs">{row.category}</span></td>
+                        <td className="text-gray-600 text-sm max-w-xs truncate">{row.description}</td>
+                        <td className="font-semibold text-red-600">₹{row.amount.toLocaleString()}</td>
+                        <td className="text-gray-400 text-sm">{row.date}</td>
+                        <td>
+                          <button onClick={() => openDelete(row.tx_id, row.description || row.category)}
+                            className="btn-ghost py-1 text-red-400"><Trash2 size={13} /></button>
+                        </td>
+                      </tr>
+                    ))}
+                    {!mdLoading && expenseRows.length === 0 && (
+                      <tr><td colSpan={5}><Empty message={`No expense records for ${MONTHS[rptMonth - 1]} ${rptYear}`} /></td></tr>
+                    )}
+                    {expenseRows.length > 0 && (
+                      <tr className="bg-amber-50 font-semibold">
+                        <td colSpan={2} className="text-gray-600">TOTAL</td>
+                        <td className="text-red-700">₹{expTotal.toLocaleString()}</td>
+                        <td colSpan={2}></td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              {/* Mobile cards */}
+              <div className="sm:hidden space-y-3">
+                {mdLoading && <p className="text-center py-8 text-gray-400">Loading…</p>}
+                {expenseRows.map(row => (
+                  <div key={row.tx_id} className="card flex flex-col gap-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="badge-gold text-xs">{row.category}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400">{row.date}</span>
+                        <button onClick={() => openDelete(row.tx_id, row.description || row.category)}
+                          className="btn-ghost py-1 text-red-400 text-xs"><Trash2 size={12} /></button>
+                      </div>
+                    </div>
+                    {row.description && <p className="text-sm text-gray-600">{row.description}</p>}
+                    <p className="text-lg font-bold text-red-600">₹{row.amount.toLocaleString()}</p>
+                  </div>
+                ))}
+                {!mdLoading && expenseRows.length === 0 && <Empty message={`No expense records for ${MONTHS[rptMonth - 1]} ${rptYear}`} />}
+                {expenseRows.length > 0 && (
+                  <div className="card bg-amber-50 border-amber-200">
+                    <div className="flex justify-between text-sm font-semibold">
+                      <span className="text-gray-600">TOTAL</span>
+                      <span className="text-red-700">₹{expTotal.toLocaleString()}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

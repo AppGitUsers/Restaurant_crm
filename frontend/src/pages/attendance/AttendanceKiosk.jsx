@@ -13,10 +13,10 @@ function LiveClock() {
   }, [])
   return (
     <div className="text-center mb-4">
-      <p className="text-5xl font-bold text-primary-700 font-mono tracking-widest">
+      <p className="text-3xl sm:text-5xl font-bold text-primary-700 font-mono tracking-widest">
         {now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
       </p>
-      <p className="text-gray-500 text-sm mt-2">
+      <p className="text-gray-500 text-xs sm:text-sm mt-2">
         {now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
       </p>
     </div>
@@ -127,7 +127,7 @@ export default function AttendanceKiosk() {
     : 'NOT_MARKED'
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-full py-4 px-4">
+    <div className="flex flex-col items-center justify-center min-h-full py-4 px-4 overflow-x-hidden">
 
       {/* Page header */}
       <div className="text-center mb-2">

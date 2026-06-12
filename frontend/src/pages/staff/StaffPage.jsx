@@ -26,7 +26,7 @@ function AttendanceCalendar({ employee, onBack }) {
   const today  = new Date()
   const [year, setYear]   = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth() + 1)
-  const [editDay, setEditDay] = useState(null)   // { date, att | null }
+  const [editDay, setEditDay] = useState(null)
   const [editForm, setEditForm] = useState({})
 
   const { data, isLoading } = useQuery({
@@ -40,9 +40,8 @@ function AttendanceCalendar({ employee, onBack }) {
   records.forEach(a => { attMap[a.date] = a })
 
   const days      = getDaysInMonth(new Date(year, month - 1))
-  const startDay  = startOfMonth(new Date(year, month - 1)).getDay()   // 0=Sun
+  const startDay  = startOfMonth(new Date(year, month - 1)).getDay()
 
-  // Stats
   const presentDays = records.filter(r => r.status === 'PRESENT').length
   const absentDays  = records.filter(r => r.status === 'ABSENT').length
   const halfDays    = records.filter(r => r.status === 'HALF').length
@@ -112,12 +111,10 @@ function AttendanceCalendar({ employee, onBack }) {
     LEAVE:   'bg-gray-400',
   }
   const statusText = { PRESENT: 'P', ABSENT: 'A', HALF: 'H', LEAVE: 'L' }
-
   const needsTimes = (s) => s === 'PRESENT' || s === 'HALF'
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <button onClick={onBack} className="btn-ghost py-1.5 px-3 text-sm flex items-center gap-1">
           <ChevronLeft size={16} />Back
@@ -134,8 +131,6 @@ function AttendanceCalendar({ employee, onBack }) {
             <p className="text-xs text-gray-400">{employee.shift_name || 'No shift'} • {employee.employment_type.replace('_',' ')}</p>
           </div>
         </div>
-
-        {/* Month navigator */}
         <div className="flex items-center gap-2 ml-auto">
           <button onClick={prevMonth} className="btn-ghost p-1.5"><ChevronLeft size={16} /></button>
           <span className="font-semibold text-gray-700 w-32 text-center text-sm">
@@ -145,7 +140,6 @@ function AttendanceCalendar({ employee, onBack }) {
         </div>
       </div>
 
-      {/* Stats strip */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
         {[
           { label: 'Total Hours',   value: `${totalHours.toFixed(1)}h`, color: 'text-primary-600', bg: 'bg-primary-50' },
@@ -162,29 +156,22 @@ function AttendanceCalendar({ employee, onBack }) {
         ))}
       </div>
 
-      {/* Calendar */}
       {isLoading ? <PageLoader /> : (
         <div className="flex-1 overflow-auto">
-          {/* Day headers */}
           <div className="grid grid-cols-7 gap-1 mb-1">
             {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
               <div key={d} className="text-center text-xs font-semibold text-gray-400 py-1">{d}</div>
             ))}
           </div>
-
-          {/* Day cells */}
           <div className="grid grid-cols-7 gap-1">
-            {/* Leading empty cells */}
             {Array.from({ length: startDay }).map((_, i) => (
               <div key={`empty-${i}`} className="rounded-xl min-h-[80px]" />
             ))}
-
             {Array.from({ length: days }, (_, i) => {
               const day     = i + 1
               const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
               const att     = attMap[dateStr]
               const isToday = dateStr === today.toISOString().split('T')[0]
-
               return (
                 <div
                   key={day}
@@ -193,44 +180,18 @@ function AttendanceCalendar({ employee, onBack }) {
                     ${att ? `${statusBg[att.status]} text-white border-transparent` : 'bg-gray-50 border-gray-100 hover:border-primary-200'}
                     ${isToday && !att ? 'border-primary-300 ring-1 ring-primary-200' : ''}`}
                 >
-                  {/* Day number */}
-                  <div className={`flex items-center justify-between mb-1`}>
-                    <span className={`text-sm font-bold ${att ? 'text-white' : isToday ? 'text-primary-600' : 'text-gray-700'}`}>
-                      {day}
-                    </span>
-                    {att && (
-                      <span className="text-[10px] font-bold bg-white/20 px-1 rounded">
-                        {statusText[att.status]}
-                      </span>
-                    )}
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={`text-sm font-bold ${att ? 'text-white' : isToday ? 'text-primary-600' : 'text-gray-700'}`}>{day}</span>
+                    {att && <span className="text-[10px] font-bold bg-white/20 px-1 rounded">{statusText[att.status]}</span>}
                   </div>
-
                   {att && att.status === 'PRESENT' || att?.status === 'HALF' ? (
                     <div className="space-y-0.5">
-                      {att.check_in && (
-                        <p className="text-[10px] text-white/90 leading-tight">
-                          In: {att.check_in.slice(0,5)}
-                        </p>
-                      )}
-                      {att.check_out && (
-                        <p className="text-[10px] text-white/90 leading-tight">
-                          Out: {att.check_out.slice(0,5)}
-                        </p>
-                      )}
-                      {parseFloat(att.hours_worked) > 0 && (
-                        <p className="text-[10px] font-semibold text-white/90 leading-tight">
-                          {parseFloat(att.hours_worked).toFixed(1)}h
-                        </p>
-                      )}
+                      {att.check_in && <p className="text-[10px] text-white/90 leading-tight">In: {att.check_in.slice(0,5)}</p>}
+                      {att.check_out && <p className="text-[10px] text-white/90 leading-tight">Out: {att.check_out.slice(0,5)}</p>}
+                      {parseFloat(att.hours_worked) > 0 && <p className="text-[10px] font-semibold text-white/90 leading-tight">{parseFloat(att.hours_worked).toFixed(1)}h</p>}
                       <div className="flex flex-wrap gap-0.5 mt-1">
-                        {att.is_late && (
-                          <span className="text-[9px] bg-orange-500 text-white px-1 py-0.5 rounded font-bold">LATE</span>
-                        )}
-                        {att.ot_minutes > 0 && (
-                          <span className="text-[9px] bg-purple-600 text-white px-1 py-0.5 rounded font-bold">
-                            OT+{att.ot_minutes}m
-                          </span>
-                        )}
+                        {att.is_late && <span className="text-[9px] bg-orange-500 text-white px-1 py-0.5 rounded font-bold">LATE</span>}
+                        {att.ot_minutes > 0 && <span className="text-[9px] bg-purple-600 text-white px-1 py-0.5 rounded font-bold">OT+{att.ot_minutes}m</span>}
                       </div>
                     </div>
                   ) : !att ? (
@@ -240,8 +201,6 @@ function AttendanceCalendar({ employee, onBack }) {
               )
             })}
           </div>
-
-          {/* Legend */}
           <div className="flex flex-wrap gap-3 mt-4 text-xs">
             {[
               { label: 'Present',  bg: 'bg-primary-500' },
@@ -260,7 +219,6 @@ function AttendanceCalendar({ employee, onBack }) {
         </div>
       )}
 
-      {/* Edit modal */}
       {editDay && (
         <Modal
           open={!!editDay}
@@ -270,11 +228,7 @@ function AttendanceCalendar({ employee, onBack }) {
           footer={
             <div className="flex justify-between w-full">
               <button onClick={() => setEditDay(null)} className="btn-ghost">Cancel</button>
-              <button
-                onClick={() => saveAtt.mutate(editForm)}
-                disabled={saveAtt.isPending}
-                className="btn-primary"
-              >
+              <button onClick={() => saveAtt.mutate(editForm)} disabled={saveAtt.isPending} className="btn-primary">
                 <Check size={14} />Save
               </button>
             </div>
@@ -284,52 +238,31 @@ function AttendanceCalendar({ employee, onBack }) {
             <Field label="Status">
               <div className="grid grid-cols-2 gap-2">
                 {['PRESENT','ABSENT','HALF','LEAVE'].map(s => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setEditForm(f => ({ ...f, status: s }))}
+                  <button key={s} type="button" onClick={() => setEditForm(f => ({ ...f, status: s }))}
                     className={`py-2 rounded-lg text-sm font-medium border-2 transition-colors
-                      ${editForm.status === s
-                        ? 'border-primary-500 bg-primary-50 text-primary-700'
-                        : 'border-gray-100 bg-white text-gray-500 hover:border-gray-200'}`}
-                  >
+                      ${editForm.status === s ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-100 bg-white text-gray-500 hover:border-gray-200'}`}>
                     {s === 'PRESENT' ? '✓ Present' : s === 'ABSENT' ? '✗ Absent' : s === 'HALF' ? '½ Half Day' : '🏖 Leave'}
                   </button>
                 ))}
               </div>
             </Field>
-
             {needsTimes(editForm.status) && (
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Check In">
-                  <input type="time" className="input" value={editForm.check_in}
-                    onChange={e => setEditForm(f => ({ ...f, check_in: e.target.value }))} />
-                </Field>
-                <Field label="Check Out">
-                  <input type="time" className="input" value={editForm.check_out}
-                    onChange={e => setEditForm(f => ({ ...f, check_out: e.target.value }))} />
-                </Field>
+                <Field label="Check In"><input type="time" className="input" value={editForm.check_in} onChange={e => setEditForm(f => ({ ...f, check_in: e.target.value }))} /></Field>
+                <Field label="Check Out"><input type="time" className="input" value={editForm.check_out} onChange={e => setEditForm(f => ({ ...f, check_out: e.target.value }))} /></Field>
               </div>
             )}
-
             <Field label="Notes">
-              <input className="input" placeholder="Optional notes…" value={editForm.notes}
-                onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} />
+              <input className="input" placeholder="Optional notes…" value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} />
             </Field>
-
-            {/* Computed preview */}
             {editForm.check_in && editForm.check_out && (
               <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500 flex gap-4">
-                <span>
-                  Hours: <strong className="text-gray-700">
-                    {(() => {
-                      const ci = editForm.check_in.split(':').map(Number)
-                      const co = editForm.check_out.split(':').map(Number)
-                      const mins = (co[0]*60+co[1]) - (ci[0]*60+ci[1])
-                      return mins > 0 ? `${(mins/60).toFixed(1)}h` : '—'
-                    })()}
-                  </strong>
-                </span>
+                <span>Hours: <strong className="text-gray-700">{(() => {
+                  const ci = editForm.check_in.split(':').map(Number)
+                  const co = editForm.check_out.split(':').map(Number)
+                  const mins = (co[0]*60+co[1]) - (ci[0]*60+ci[1])
+                  return mins > 0 ? `${(mins/60).toFixed(1)}h` : '—'
+                })()}</strong></span>
               </div>
             )}
           </div>
@@ -339,7 +272,7 @@ function AttendanceCalendar({ employee, onBack }) {
   )
 }
 
-// ── Shift Tab ─────────────────────────────────────────
+// ── Shift Tab (card view on all screens) ─────────────
 function ShiftTab() {
   const qc = useQueryClient()
   const [modal, setModal] = useState(false)
@@ -394,44 +327,37 @@ function ShiftTab() {
       <div className="flex justify-end mb-4">
         <button onClick={openCreate} className="btn-primary"><Plus size={15} />Add Shift</button>
       </div>
-      <div className="table-container">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Shift Name</th><th>Time</th><th>Hours</th><th>Days</th>
-              <th>Late After</th><th>OT After</th><th>Status</th><th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && <tr><td colSpan={8} className="text-center py-8 text-gray-400">Loading…</td></tr>}
-            {shifts.map(s => (
-              <tr key={s.id}>
-                <td className="font-semibold">{s.name}</td>
-                <td className="font-mono text-sm">{s.start_time} – {s.end_time}</td>
-                <td>{s.hours}h</td>
-                <td>
-                  <div className="flex flex-wrap gap-0.5">
-                    {(s.days_list || []).map(d => (
-                      <span key={d} className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary-50 text-primary-600">{d}</span>
-                    ))}
-                  </div>
-                </td>
-                <td className="text-sm text-gray-500">{s.late_threshold} min</td>
-                <td className="text-sm text-gray-500">{s.ot_threshold} min</td>
-                <td><span className={s.is_active ? 'badge-green' : 'badge-gray'}>{s.is_active ? 'Active' : 'Inactive'}</span></td>
-                <td>
-                  <div className="flex gap-1">
-                    <button onClick={() => openEdit(s)} className="btn-ghost py-1"><Edit2 size={13} /></button>
-                    <button onClick={() => setDel(s)} className="btn-ghost py-1 text-red-400"><Trash2 size={13} /></button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {!isLoading && shifts.length === 0 && (
-              <tr><td colSpan={8}><Empty message="No shifts created yet" /></td></tr>
-            )}
-          </tbody>
-        </table>
+
+      {isLoading && <div className="text-center py-8 text-gray-400">Loading…</div>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {shifts.map(s => (
+          <div key={s.id} className="card flex flex-col gap-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-semibold text-gray-800">{s.name}</p>
+                <p className="font-mono text-sm text-primary-600 mt-0.5">{s.start_time} – {s.end_time}</p>
+              </div>
+              <span className={s.is_active ? 'badge-green flex-shrink-0' : 'badge-gray flex-shrink-0'}>{s.is_active ? 'Active' : 'Inactive'}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-sm">
+              <div><p className="text-xs text-gray-400">Hours</p><p className="font-semibold text-gray-700">{s.hours}h</p></div>
+              <div><p className="text-xs text-gray-400">Late After</p><p className="font-semibold text-gray-700">{s.late_threshold}m</p></div>
+              <div><p className="text-xs text-gray-400">OT After</p><p className="font-semibold text-gray-700">{s.ot_threshold}m</p></div>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {(s.days_list || []).map(d => (
+                <span key={d} className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary-50 text-primary-600">{d}</span>
+              ))}
+            </div>
+            <div className="flex gap-1 border-t border-gray-50 pt-2">
+              <button onClick={() => openEdit(s)} className="btn-ghost py-1 text-xs flex-1"><Edit2 size={12} />Edit</button>
+              <button onClick={() => setDel(s)} className="btn-ghost py-1 text-xs text-red-400"><Trash2 size={12} /></button>
+            </div>
+          </div>
+        ))}
+        {!isLoading && shifts.length === 0 && (
+          <div className="col-span-full"><Empty message="No shifts created yet" /></div>
+        )}
       </div>
 
       <Modal open={modal} onClose={() => setModal(false)} title={sel ? 'Edit Shift' : 'Add Shift'} size="lg"
@@ -650,7 +576,9 @@ function AttendanceTab() {
         </div>
         <button onClick={openCreate} className="btn-primary ml-auto"><Plus size={15} />Record</button>
       </div>
-      <div className="table-container">
+
+      {/* Desktop table */}
+      <div className="hidden sm:block table-container">
         <table className="table">
           <thead><tr><th>Employee</th><th>Status</th><th>Check In</th><th>Check Out</th><th>Hours</th><th>Late</th><th>OT</th><th>Notes</th><th></th></tr></thead>
           <tbody>
@@ -672,6 +600,30 @@ function AttendanceTab() {
           </tbody>
         </table>
       </div>
+
+      {/* Mobile cards */}
+      <div className="sm:hidden space-y-3">
+        {isLoading && <p className="text-center py-8 text-gray-400">Loading…</p>}
+        {records.map(r => (
+          <div key={r.id} className="card flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-gray-800">{r.employee_name}</p>
+              <StatusBadge status={r.status} />
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+              <span className="text-gray-400 text-xs">Check In</span><span className="text-gray-700">{r.check_in || '—'}</span>
+              <span className="text-gray-400 text-xs">Check Out</span><span className="text-gray-700">{r.check_out || '—'}</span>
+              <span className="text-gray-400 text-xs">Hours</span><span className="text-gray-700">{r.hours_worked > 0 ? `${r.hours_worked}h` : '—'}</span>
+              {r.is_late && <><span className="text-gray-400 text-xs">Late</span><span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-medium w-fit">LATE</span></>}
+              {r.ot_minutes > 0 && <><span className="text-gray-400 text-xs">OT</span><span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded font-medium w-fit">+{r.ot_minutes}m</span></>}
+              {r.notes && <><span className="text-gray-400 text-xs">Notes</span><span className="text-gray-600 text-xs">{r.notes}</span></>}
+            </div>
+            <button onClick={() => openEdit(r)} className="btn-ghost py-1 text-xs self-end"><Edit2 size={12} />Edit</button>
+          </div>
+        ))}
+        {!isLoading && records.length === 0 && <Empty message="No records for this date" />}
+      </div>
+
       <Modal open={modal} onClose={() => { setModal(false); setEditRec(null) }} title={editRec ? 'Edit Attendance' : 'Record Attendance'}
         footer={<><button onClick={() => { setModal(false); setEditRec(null) }} className="btn-ghost">Cancel</button><button onClick={() => save.mutate(form)} disabled={save.isPending} className="btn-primary">Save</button></>}>
         <Field label="Employee" required>
@@ -775,7 +727,8 @@ function PaymentsTab() {
         <button onClick={goNext} className="btn-ghost p-2 rounded-lg"><ChevronRight size={18} /></button>
       </div>
 
-      <div className="table-container">
+      {/* Desktop table */}
+      <div className="hidden sm:block table-container">
         <table className="table">
           <thead>
             <tr>
@@ -810,17 +763,14 @@ function PaymentsTab() {
             )}
             {rows.map(emp => (
               <tr key={emp.employee_id}>
-                {/* Employee */}
                 <td>
                   <div className="font-semibold text-gray-800">{emp.employee_name}</div>
                   <div className="text-xs text-gray-400 mt-0.5">{emp.department}</div>
                 </td>
-                {/* Shift */}
                 <td>
                   <div className="text-sm text-gray-700">{emp.shift_name}</div>
                   <div className="text-xs text-gray-400">{emp.shift_hours}h / day</div>
                 </td>
-                {/* Working days */}
                 <td className="text-center">
                   <div className="font-semibold text-gray-800">{emp.working_days} days</div>
                   <div className="text-xs text-gray-400 space-x-1 mt-0.5">
@@ -829,39 +779,24 @@ function PaymentsTab() {
                     <span className="text-red-400">A:{emp.absent_days}</span>
                   </div>
                 </td>
-                {/* Required hours */}
                 <td className="text-center">
                   <span className="font-medium text-gray-700">{emp.required_hours}h</span>
                 </td>
-                {/* Hours worked */}
                 <td className="text-center">
                   <span className={`font-semibold ${emp.hours_worked >= emp.required_hours ? 'text-green-600' : 'text-gray-700'}`}>
                     {emp.hours_worked}h
                   </span>
                 </td>
-                {/* Attendance % + bar */}
                 <td className="text-center min-w-[90px]">
-                  <span className={`font-bold text-sm ${pctColor(emp.attendance_pct)}`}>
-                    {emp.attendance_pct}%
-                  </span>
+                  <span className={`font-bold text-sm ${pctColor(emp.attendance_pct)}`}>{emp.attendance_pct}%</span>
                   <div className="w-full bg-gray-100 rounded-full h-1.5 mt-1">
-                    <div
-                      className={`h-1.5 rounded-full transition-all ${barColor(emp.attendance_pct)}`}
-                      style={{ width: `${Math.min(100, emp.attendance_pct)}%` }}
-                    />
+                    <div className={`h-1.5 rounded-full transition-all ${barColor(emp.attendance_pct)}`} style={{ width: `${Math.min(100, emp.attendance_pct)}%` }} />
                   </div>
                 </td>
-                {/* Full salary */}
-                <td className="text-right text-gray-400 text-sm">
-                  ₹{emp.full_salary.toLocaleString()}
-                </td>
-                {/* Due salary */}
+                <td className="text-right text-gray-400 text-sm">₹{emp.full_salary.toLocaleString()}</td>
                 <td className="text-right">
-                  <span className="font-bold text-primary-600 text-base">
-                    ₹{emp.calculated_salary.toLocaleString()}
-                  </span>
+                  <span className="font-bold text-primary-600 text-base">₹{emp.calculated_salary.toLocaleString()}</span>
                 </td>
-                {/* Action */}
                 <td className="text-right">
                   {emp.paid_this_month ? (
                     <span className="badge-green inline-flex items-center gap-1 text-xs px-3 py-1.5">
@@ -884,6 +819,51 @@ function PaymentsTab() {
         </table>
       </div>
 
+      {/* Mobile cards */}
+      <div className="sm:hidden space-y-3">
+        {isLoading && <p className="text-center py-8 text-gray-400">Loading staff data…</p>}
+        {isError && (
+          <div className="flex flex-col items-center gap-2 text-red-500 py-8">
+            <AlertCircle size={28} />
+            <span className="font-medium">Failed to load staff data</span>
+          </div>
+        )}
+        {rows.map(emp => (
+          <div key={emp.employee_id} className="card flex flex-col gap-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-bold text-gray-800">{emp.employee_name}</p>
+                <p className="text-xs text-gray-400">{emp.department} · {emp.shift_name}</p>
+              </div>
+              {emp.paid_this_month
+                ? <span className="badge-green inline-flex items-center gap-1 text-xs px-2 py-1"><Check size={11} /> Paid</span>
+                : <span className={`text-sm font-bold ${pctColor(emp.attendance_pct)}`}>{emp.attendance_pct}%</span>
+              }
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-1.5">
+              <div className={`h-1.5 rounded-full ${barColor(emp.attendance_pct)}`} style={{ width: `${Math.min(100, emp.attendance_pct)}%` }} />
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+              <div><p className="text-xs text-gray-400">Working Days</p><p className="font-semibold">{emp.working_days} <span className="text-xs font-normal text-gray-400">(P:{emp.present_days} H:{emp.half_days} A:{emp.absent_days})</span></p></div>
+              <div><p className="text-xs text-gray-400">Hours</p><p className="font-semibold">{emp.hours_worked}h <span className="text-xs font-normal text-gray-400">/ {emp.required_hours}h</span></p></div>
+              <div><p className="text-xs text-gray-400">Full Salary</p><p className="text-gray-500">₹{emp.full_salary.toLocaleString()}</p></div>
+              <div><p className="text-xs text-gray-400">Due Salary</p><p className="font-bold text-primary-600">₹{emp.calculated_salary.toLocaleString()}</p></div>
+            </div>
+            {!emp.paid_this_month && (
+              <button
+                onClick={() => setConfirmEmp(emp)}
+                disabled={emp.calculated_salary <= 0}
+                className="btn-primary w-full justify-center disabled:opacity-40"
+              >
+                <CreditCard size={14} />
+                Pay ₹{emp.calculated_salary.toLocaleString()}
+              </button>
+            )}
+          </div>
+        ))}
+        {!isLoading && !isError && rows.length === 0 && <Empty message="No staff found" />}
+      </div>
+
       {/* Pay Confirmation Modal */}
       <Modal
         open={!!confirmEmp}
@@ -892,9 +872,7 @@ function PaymentsTab() {
         size="md"
         footer={
           <>
-            <button onClick={() => setConfirmEmp(null)} disabled={pay.isPending} className="btn-ghost">
-              Cancel
-            </button>
+            <button onClick={() => setConfirmEmp(null)} disabled={pay.isPending} className="btn-ghost">Cancel</button>
             <button onClick={handlePay} disabled={pay.isPending} className="btn-primary">
               <CreditCard size={14} />
               {pay.isPending ? 'Processing…' : `Confirm & Pay ₹${confirmEmp?.calculated_salary?.toLocaleString()}`}
@@ -904,20 +882,15 @@ function PaymentsTab() {
       >
         {confirmEmp && (
           <div className="space-y-4">
-            {/* Employee info */}
             <div className="flex items-start gap-3 bg-gray-50 rounded-xl p-4">
               <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center shrink-0">
-                <span className="text-primary-600 font-bold text-sm">
-                  {confirmEmp.employee_name.charAt(0).toUpperCase()}
-                </span>
+                <span className="text-primary-600 font-bold text-sm">{confirmEmp.employee_name.charAt(0).toUpperCase()}</span>
               </div>
               <div>
                 <div className="font-bold text-gray-800 text-base">{confirmEmp.employee_name}</div>
                 <div className="text-sm text-gray-500">{confirmEmp.department} · {confirmEmp.shift_name}</div>
               </div>
             </div>
-
-            {/* Stats grid */}
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div className="bg-gray-50 rounded-lg p-3">
                 <div className="text-gray-400 text-xs mb-0.5">Period</div>
@@ -925,16 +898,11 @@ function PaymentsTab() {
               </div>
               <div className="bg-gray-50 rounded-lg p-3">
                 <div className="text-gray-400 text-xs mb-0.5">Attendance</div>
-                <div className={`font-bold ${pctColor(confirmEmp.attendance_pct)}`}>
-                  {confirmEmp.attendance_pct}%
-                </div>
+                <div className={`font-bold ${pctColor(confirmEmp.attendance_pct)}`}>{confirmEmp.attendance_pct}%</div>
               </div>
               <div className="bg-gray-50 rounded-lg p-3">
                 <div className="text-gray-400 text-xs mb-0.5">Hours Worked</div>
-                <div className="font-semibold text-gray-700">
-                  {confirmEmp.hours_worked}h
-                  <span className="text-gray-400 font-normal"> / {confirmEmp.required_hours}h</span>
-                </div>
+                <div className="font-semibold text-gray-700">{confirmEmp.hours_worked}h<span className="text-gray-400 font-normal"> / {confirmEmp.required_hours}h</span></div>
               </div>
               <div className="bg-gray-50 rounded-lg p-3">
                 <div className="text-gray-400 text-xs mb-0.5">Attendance Breakdown</div>
@@ -945,8 +913,6 @@ function PaymentsTab() {
                 </div>
               </div>
             </div>
-
-            {/* Amount banner */}
             <div className="bg-primary-600 text-white rounded-xl p-4 flex justify-between items-center">
               <div>
                 <div className="text-xs opacity-70 mb-0.5">Amount to Pay</div>
@@ -957,7 +923,6 @@ function PaymentsTab() {
                 <span className="text-base font-semibold opacity-90">₹{confirmEmp.full_salary.toLocaleString()}</span>
               </div>
             </div>
-
             <p className="text-xs text-gray-400 text-center">
               This payment will automatically appear as an expense in the Finance dashboard.
             </p>
@@ -1009,7 +974,9 @@ function CredentialsTab() {
       <div className="flex justify-end mb-4">
         <button onClick={openCreate} className="btn-primary"><Plus size={15} />Add Staff User</button>
       </div>
-      <div className="table-container">
+
+      {/* Desktop table */}
+      <div className="hidden sm:block table-container">
         <table className="table">
           <thead><tr><th>Username</th><th>Role</th><th>Linked Employee</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
@@ -1032,6 +999,31 @@ function CredentialsTab() {
           </tbody>
         </table>
       </div>
+
+      {/* Mobile cards */}
+      <div className="sm:hidden space-y-3">
+        {isLoading && <p className="text-center py-8 text-gray-400">Loading…</p>}
+        {staffUsers.map(u => (
+          <div key={u.id} className="card flex flex-col gap-2">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-mono font-semibold text-gray-800">{u.username}</p>
+                {u.linked_employee_name && <p className="text-xs text-gray-400 mt-0.5">{u.linked_employee_name}</p>}
+              </div>
+              <div className="flex gap-1.5 items-center flex-shrink-0">
+                <span className={u.role === 'KITCHEN' ? 'badge-gold text-xs' : 'badge-blue text-xs'}>{u.role}</span>
+                <span className={u.is_active ? 'badge-green text-xs' : 'badge-red text-xs'}>{u.is_active ? 'Active' : 'Disabled'}</span>
+              </div>
+            </div>
+            <div className="flex gap-1 border-t border-gray-50 pt-2">
+              <button onClick={() => openEdit(u)} className="btn-ghost py-1 text-xs flex-1"><Edit2 size={12} />Edit</button>
+              <button onClick={() => setDel(u)} className="btn-ghost py-1 text-xs text-red-400 flex-1 justify-center"><Trash2 size={12} /></button>
+            </div>
+          </div>
+        ))}
+        {!isLoading && staffUsers.length === 0 && <Empty message="No staff users yet" />}
+      </div>
+
       <Modal open={modal} onClose={() => setModal(false)} title={sel ? 'Edit Staff User' : 'Create Staff User'} size="md"
         footer={<><button onClick={() => setModal(false)} className="btn-ghost">Cancel</button><button onClick={handleSubmit} disabled={save.isPending} className="btn-primary">{sel ? 'Update' : 'Create'}</button></>}>
         <div className="space-y-3">
@@ -1069,17 +1061,16 @@ function CredentialsTab() {
 // ── Main StaffPage ────────────────────────────────────
 export default function StaffPage() {
   const [tab, setTab]       = useState('employees')
-  const [calEmp, setCalEmp] = useState(null)   // full-page calendar employee
+  const [calEmp, setCalEmp] = useState(null)
 
   const tabs = [
-    { id: 'employees',   label: 'Employees',  icon: <Users size={15} /> },
-    { id: 'shifts',      label: 'Shifts',     icon: <Clock size={15} /> },
-    { id: 'attendance',  label: 'Attendance', icon: <Calendar size={15} /> },
-    { id: 'payments',    label: 'Payments',   icon: <CreditCard size={15} /> },
-    { id: 'credentials', label: 'Credentials',icon: <KeyRound size={15} /> },
+    { id: 'employees',   label: 'Employees',   icon: <Users size={15} /> },
+    { id: 'shifts',      label: 'Shifts',      icon: <Clock size={15} /> },
+    { id: 'attendance',  label: 'Attendance',  icon: <Calendar size={15} /> },
+    { id: 'payments',    label: 'Payments',    icon: <CreditCard size={15} /> },
+    { id: 'credentials', label: 'Credentials', icon: <KeyRound size={15} /> },
   ]
 
-  // Full-page calendar replaces all other content
   if (calEmp) {
     return (
       <div className="flex flex-col h-full p-1">
@@ -1096,14 +1087,16 @@ export default function StaffPage() {
           <p className="page-subtitle">Employees, shifts, attendance, and payroll</p>
         </div>
       </div>
-      <div className="flex gap-1 mb-6 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
-              ${tab === t.id ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            {t.icon}{t.label}
-          </button>
-        ))}
+      <div className="overflow-x-auto -mx-1 px-1 mb-6">
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit min-w-max">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap
+                ${tab === t.id ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              {t.icon}{t.label}
+            </button>
+          ))}
+        </div>
       </div>
       {tab === 'employees'   && <EmployeeTab onOpenCalendar={setCalEmp} />}
       {tab === 'shifts'      && <ShiftTab />}

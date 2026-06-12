@@ -73,7 +73,9 @@ function VendorTab() {
       <SearchBar value={search} onChange={setSearch} placeholder="Search vendors…">
         <button onClick={openCreate} className="btn-primary"><Plus size={15} />Add Vendor</button>
       </SearchBar>
-      <div className="table-container">
+
+      {/* Desktop table */}
+      <div className="hidden sm:block table-container">
         <table className="table">
           <thead><tr><th>Vendor</th><th>Contact</th><th>Phone</th><th>GSTIN</th><th>Invoices</th><th>Actions</th></tr></thead>
           <tbody>
@@ -97,6 +99,33 @@ function VendorTab() {
           </tbody>
         </table>
       </div>
+
+      {/* Mobile cards */}
+      <div className="sm:hidden space-y-3">
+        {isLoading && <p className="text-center py-8 text-gray-400">Loading…</p>}
+        {vendors.map(v => (
+          <div key={v.id} className="card flex flex-col gap-2">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-semibold text-gray-800">{v.name}</p>
+                {v.email && <p className="text-xs text-gray-400">{v.email}</p>}
+              </div>
+              <div className="flex gap-1 flex-shrink-0">
+                <button onClick={() => openEdit(v)} className="btn-ghost py-1 px-2"><Edit2 size={13} /></button>
+                <button onClick={() => setDel(v)} className="btn-ghost py-1 px-2 text-red-400"><Trash2 size={13} /></button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+              {v.contact_name && <><span className="text-gray-400 text-xs">Contact</span><span className="text-gray-700">{v.contact_name}</span></>}
+              <span className="text-gray-400 text-xs">Phone</span><span className="text-gray-700">{v.phone || '—'}</span>
+              <span className="text-gray-400 text-xs">GSTIN</span><span className="text-gray-700 font-mono text-xs">{v.gstin || '—'}</span>
+              <span className="text-gray-400 text-xs">Invoices</span><span className="text-gray-700">{v.invoice_count}</span>
+            </div>
+          </div>
+        ))}
+        {!isLoading && vendors.length === 0 && <Empty message="No vendors" />}
+      </div>
+
       <Modal open={modal} onClose={() => setModal(false)} title={sel ? 'Edit Vendor' : 'Add Vendor'}
         footer={<><button onClick={() => setModal(false)} className="btn-ghost">Cancel</button><button onClick={() => save.mutate(form)} disabled={save.isPending} className="btn-primary">Save</button></>}>
         <div className="grid grid-cols-2 gap-3">
@@ -113,7 +142,7 @@ function VendorTab() {
   )
 }
 
-// ── Stock Tab ─────────────────────────────────────────
+// ── Stock Tab (card view on all screens) ──────────────
 function StockTab() {
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
@@ -141,30 +170,33 @@ function StockTab() {
         )}
       </div>
       <SearchBar value={search} onChange={setSearch} placeholder="Search stock…" />
-      <div className="table-container">
-        <table className="table">
-          <thead><tr><th>Ingredient</th><th>Unit</th><th>Current Stock</th><th>Threshold</th><th>Status</th><th>Actions</th></tr></thead>
-          <tbody>
-            {isLoading && <tr><td colSpan={6} className="text-center py-8 text-gray-400">Loading…</td></tr>}
-            {stocks.map(s => (
-              <tr key={s.id}>
-                <td className="font-medium">{s.ingredient_name}</td>
-                <td><span className="badge-gray">{s.unit}</span></td>
-                <td className={parseFloat(s.current_quantity) <= parseFloat(s.minimum_threshold) ? 'text-red-600 font-bold' : ''}>
-                  {parseFloat(s.current_quantity).toFixed(2)}
-                </td>
-                <td className="text-gray-400">{parseFloat(s.minimum_threshold).toFixed(2)}</td>
-                <td><span className={s.is_low ? 'badge-red' : 'badge-green'}>{s.is_low ? 'Low' : 'OK'}</span></td>
-                <td>
-                  <button onClick={() => { setAdjustModal(s); setAdjForm({ quantity: s.current_quantity, note: '' }) }}
-                    className="btn-ghost py-1 text-xs"><Edit2 size={12} />Adjust</button>
-                </td>
-              </tr>
-            ))}
-            {!isLoading && stocks.length === 0 && <tr><td colSpan={6}><Empty message="No stock records" /></td></tr>}
-          </tbody>
-        </table>
+
+      {isLoading && <div className="text-center py-8 text-gray-400">Loading…</div>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        {stocks.map(s => (
+          <div key={s.id} className={`card flex flex-col gap-3 ${s.is_low ? 'border-red-200' : ''}`}>
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-semibold text-gray-800 leading-tight">{s.ingredient_name}</p>
+              <span className={s.is_low ? 'badge-red flex-shrink-0' : 'badge-green flex-shrink-0'}>{s.is_low ? 'Low' : 'OK'}</span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="badge-gray text-xs">{s.unit}</span>
+              <span className={`text-lg font-bold ${parseFloat(s.current_quantity) <= parseFloat(s.minimum_threshold) ? 'text-red-600' : 'text-gray-800'}`}>
+                {parseFloat(s.current_quantity).toFixed(2)}
+              </span>
+              <span className="text-xs text-gray-400">/ min {parseFloat(s.minimum_threshold).toFixed(2)}</span>
+            </div>
+            <button
+              onClick={() => { setAdjustModal(s); setAdjForm({ quantity: s.current_quantity, note: '' }) }}
+              className="btn-ghost py-1 text-xs self-start"
+            >
+              <Edit2 size={12} />Adjust Stock
+            </button>
+          </div>
+        ))}
+        {!isLoading && stocks.length === 0 && <div className="col-span-full"><Empty message="No stock records" /></div>}
       </div>
+
       <Modal open={!!adjustModal} onClose={() => setAdjustModal(null)} title={`Adjust Stock — ${adjustModal?.ingredient_name}`}
         footer={<><button onClick={() => setAdjustModal(null)} className="btn-ghost">Cancel</button>
           <button onClick={() => adjust.mutate({ id: adjustModal.id, data: adjForm })} disabled={adjust.isPending} className="btn-primary">Update</button></>}>
@@ -205,7 +237,6 @@ function InvoiceTab() {
   const markReceived = useMutation({ mutationFn: id => inventoryAPI.invoices.markReceived(id), onSuccess: () => { qc.invalidateQueries(['invoices']); qc.invalidateQueries(['stock']); toast.success('Stock updated from invoice') } })
   const addPayment   = useMutation({ mutationFn: ({ id, data }) => inventoryAPI.invoices.addPayment(id, data), onSuccess: () => { qc.invalidateQueries(['invoices']); setPayModal(null); toast.success('Payment recorded') } })
 
-  // ── helpers ──
   const calcSubtotal = items =>
     items.reduce((s, r) => s + (parseFloat(r.quantity) || 0) * (parseFloat(r.unit_price) || 0), 0)
 
@@ -261,7 +292,8 @@ function InvoiceTab() {
         <button onClick={() => { setForm(emptyForm); setModal(true) }} className="btn-primary"><Plus size={15} />New Invoice</button>
       </SearchBar>
 
-      <div className="table-container">
+      {/* Desktop table */}
+      <div className="hidden sm:block table-container">
         <table className="table">
           <thead><tr><th>Invoice #</th><th>Vendor</th><th>Date</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
@@ -287,6 +319,34 @@ function InvoiceTab() {
             {!isLoading && invoices.length === 0 && <tr><td colSpan={8}><Empty message="No invoices" /></td></tr>}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="sm:hidden space-y-3">
+        {isLoading && <p className="text-center py-8 text-gray-400">Loading…</p>}
+        {invoices.map(inv => (
+          <div key={inv.id} className="card flex flex-col gap-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-mono font-semibold text-gray-800">{inv.invoice_number}</p>
+                <p className="text-sm text-gray-500">{inv.vendor_name}</p>
+              </div>
+              <StatusBadge status={inv.status} />
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-sm">
+              <div><p className="text-xs text-gray-400">Total</p><p className="font-semibold">₹{parseFloat(inv.total_amount).toLocaleString()}</p></div>
+              <div><p className="text-xs text-gray-400">Paid</p><p className="font-semibold text-primary-600">₹{parseFloat(inv.paid_amount).toLocaleString()}</p></div>
+              <div><p className="text-xs text-gray-400">Balance</p><p className={`font-bold ${parseFloat(inv.balance_due) > 0 ? 'text-red-600' : 'text-gray-400'}`}>₹{parseFloat(inv.balance_due).toLocaleString()}</p></div>
+            </div>
+            <p className="text-xs text-gray-400">{inv.invoice_date}</p>
+            <div className="flex gap-2 flex-wrap border-t border-gray-50 pt-2">
+              <button onClick={() => setDetail(inv)} className="btn-ghost py-1 text-xs"><FileText size={12} />View</button>
+              {!inv.stock_updated && <button onClick={() => markReceived.mutate(inv.id)} className="btn-ghost py-1 text-xs text-primary-600"><Package size={12} />Receive</button>}
+              {inv.status !== 'PAID' && <button onClick={() => { setPayModal(inv); setPayForm({ amount: inv.balance_due, payment_date: today, payment_method: 'Cash', notes: '' }) }} className="btn-ghost py-1 text-xs text-gold-400"><CreditCard size={12} />Pay</button>}
+            </div>
+          </div>
+        ))}
+        {!isLoading && invoices.length === 0 && <Empty message="No invoices" />}
       </div>
 
       {/* ── Create Invoice Modal ── */}
@@ -509,14 +569,16 @@ export default function InventoryPage() {
           <p className="page-subtitle">Stock levels, vendor invoices, and purchase tracking</p>
         </div>
       </div>
-      <div className="flex gap-1 mb-6 bg-gray-100 rounded-xl p-1 w-fit">
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
-              ${tab === t.id ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            {t.icon}{t.label}
-          </button>
-        ))}
+      <div className="overflow-x-auto -mx-1 px-1 mb-6">
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit min-w-max">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap
+                ${tab === t.id ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              {t.icon}{t.label}
+            </button>
+          ))}
+        </div>
       </div>
       {tab === 'stock'    && <StockTab />}
       {tab === 'invoices' && <InvoiceTab />}

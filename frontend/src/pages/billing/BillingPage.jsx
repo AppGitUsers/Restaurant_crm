@@ -619,10 +619,11 @@ function BillModal({ order, onClose }) {
 // ── Main BillingPage ──────────────────────────────────
 export default function BillingPage() {
   const qc = useQueryClient()
-  const [search, setSearch]         = useState('')
-  const [typeFilter, setType]       = useState('')
-  const [billOrder, setBill]        = useState(null)
+  const [search, setSearch]           = useState('')
+  const [typeFilter, setType]         = useState('')
+  const [billOrder, setBill]          = useState(null)
   const [showCustomize, setCustomize] = useState(false)
+  const [mobileCartOpen, setCartOpen] = useState(false)
   const { addItem, addCustomItem, getItemCount, setTaxPercent } = useCartStore()
 
   // Sync GST rate from settings into cart store on page load
@@ -715,12 +716,12 @@ export default function BillingPage() {
   const cartCount = getItemCount()
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* Left: Menu grid */}
-      <div className="flex-1 flex flex-col overflow-hidden p-4">
+    <div className="flex h-full overflow-hidden relative">
+      {/* Menu grid — full width on mobile, flex-1 on desktop */}
+      <div className="flex-1 flex flex-col overflow-hidden p-3 md:p-4">
         {/* Filters */}
-        <div className="flex flex-wrap gap-2 mb-4">
-          <div className="relative flex-1 min-w-[180px]">
+        <div className="flex flex-wrap gap-2 mb-3">
+          <div className="relative flex-1 min-w-[160px]">
             <input type="text" value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search menu…" className="input pl-8" />
             <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -746,15 +747,15 @@ export default function BillingPage() {
           </div>
         </div>
 
-        {/* Grid */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Grid — extra bottom padding on mobile for FAB */}
+        <div className="flex-1 overflow-y-auto pb-24 md:pb-0">
           {isLoading ? <PageLoader /> : typeFilter ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-3">
               {items.map(item => <FoodCard key={item.id} item={item} onAdd={handleAdd} />)}
-              {items.length === 0 && <div className="col-span-5"><Empty message="No items found" icon={<UtensilsCrossed size={48} />} /></div>}
+              {items.length === 0 && <div className="col-span-4"><Empty message="No items found" icon={<UtensilsCrossed size={48} />} /></div>}
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-5">
               {typesList
                 .map(type => ({ type, groupItems: items.filter(i => String(i.food_type) === String(type.id)) }))
                 .filter(({ groupItems }) => groupItems.length > 0)
@@ -765,7 +766,7 @@ export default function BillingPage() {
                       <h3 className="font-semibold text-sm text-gray-700">{type.name}</h3>
                       <span className="text-xs text-gray-400">({groupItems.length})</span>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-3">
                       {groupItems.map(item => <FoodCard key={item.id} item={item} onAdd={handleAdd} />)}
                     </div>
                   </div>
@@ -777,8 +778,8 @@ export default function BillingPage() {
         </div>
       </div>
 
-      {/* Right: Cart */}
-      <div className="w-80 flex-shrink-0 bg-white border-l border-gray-100 flex flex-col p-4 shadow-lg">
+      {/* Desktop: static right cart panel */}
+      <div className="hidden md:flex w-80 flex-shrink-0 bg-white border-l border-gray-100 flex-col p-4 shadow-lg">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <ShoppingCart size={18} className="text-primary-500" />
@@ -792,6 +793,46 @@ export default function BillingPage() {
         </div>
         <CartPanel onPlaceOrder={() => placeOrder.mutate()} />
       </div>
+
+      {/* Mobile: cart overlay drawer */}
+      {mobileCartOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setCartOpen(false)} />
+          <div className="absolute right-0 top-0 bottom-0 w-full max-w-sm bg-white shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <ShoppingCart size={18} className="text-primary-500" />
+                <span className="font-semibold text-gray-800">Cart</span>
+                {cartCount > 0 && (
+                  <span className="w-5 h-5 bg-gold-300 text-white rounded-full text-xs flex items-center justify-center font-bold">
+                    {cartCount}
+                  </span>
+                )}
+              </div>
+              <button onClick={() => setCartOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              <CartPanel onPlaceOrder={() => { placeOrder.mutate(); setCartOpen(false) }} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile: floating cart button */}
+      <button
+        onClick={() => setCartOpen(true)}
+        className="fixed bottom-5 right-5 z-40 md:hidden flex items-center gap-2 px-5 py-3 bg-primary-500 text-white rounded-full shadow-xl hover:bg-primary-600 active:scale-95 transition-all"
+      >
+        <ShoppingCart size={18} />
+        <span className="font-semibold text-sm">Cart</span>
+        {cartCount > 0 && (
+          <span className="w-5 h-5 bg-gold-300 rounded-full text-xs flex items-center justify-center font-bold">
+            {cartCount}
+          </span>
+        )}
+      </button>
 
       {/* Customize modal */}
       {showCustomize && (
