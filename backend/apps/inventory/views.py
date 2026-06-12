@@ -81,8 +81,12 @@ class VendorInvoiceViewSet(viewsets.ModelViewSet):
         data    = {**request.data, 'invoice': invoice.id}
         serializer = InvoicePaymentSerializer(data=data)
         serializer.is_valid(raise_exception=True)
-        serializer.save(invoice=invoice)  # triggers inventory/signals.py → handle_invoice_payment → creates expense Transaction
-        invoice.refresh_from_db()
+        serializer.save(invoice=invoice)
+        # Re-fetch invoice fresh to pick up signal-updated paid_amount/status and new payment row
+        invoice = (VendorInvoice.objects
+                   .select_related('vendor')
+                   .prefetch_related('items__ingredient', 'payments')
+                   .get(pk=invoice.pk))
         return Response(VendorInvoiceSerializer(invoice).data, status=201)
 
 

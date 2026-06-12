@@ -1,4 +1,5 @@
 from django.db.models.signals import post_save
+from django.db.models import Sum
 from django.dispatch import receiver
 from .models import InvoicePayment, VendorInvoice, Stock, StockTransaction
 
@@ -8,8 +9,12 @@ def handle_invoice_payment(sender, instance, created, **kwargs):
     """Update invoice paid_amount + status when a payment is recorded."""
     if not created:
         return
-    invoice = instance.invoice
-    invoice.paid_amount = sum(p.amount for p in invoice.payments.all())
+    # Fetch a fresh invoice directly from DB to avoid stale prefetch_related cache
+    # (instance.invoice may carry a prefetch cache that excludes the just-saved payment)
+    invoice = VendorInvoice.objects.get(pk=instance.invoice_id)
+    invoice.paid_amount = (InvoicePayment.objects
+                           .filter(invoice_id=instance.invoice_id)
+                           .aggregate(total=Sum('amount'))['total'] or 0)
     invoice.recalculate_status()
     invoice.save(update_fields=['paid_amount', 'status'])
 
