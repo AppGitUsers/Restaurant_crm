@@ -115,28 +115,29 @@ function AttendanceCalendar({ employee, onBack }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
-        <button onClick={onBack} className="btn-ghost py-1.5 px-3 text-sm flex items-center gap-1">
-          <ChevronLeft size={16} />Back
+      {/* Header: back + employee info + month nav — all on one row on mobile */}
+      <div className="flex items-center gap-2 mb-4">
+        <button onClick={onBack} className="btn-ghost py-1.5 px-2 text-sm flex items-center gap-1 flex-shrink-0">
+          <ChevronLeft size={15} />Back
         </button>
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-primary-100 flex items-center justify-center overflow-hidden flex-shrink-0">
             {employee.photo_url
               ? <img src={employee.photo_url} alt={employee.name} className="w-full h-full object-cover" />
-              : <Users size={18} className="text-primary-400" />
+              : <Users size={16} className="text-primary-400" />
             }
           </div>
-          <div>
-            <h2 className="font-bold text-gray-800 text-base">{employee.name}</h2>
-            <p className="text-xs text-gray-400">{employee.shift_name || 'No shift'} • {employee.employment_type.replace('_',' ')}</p>
+          <div className="min-w-0">
+            <h2 className="font-bold text-gray-800 text-sm sm:text-base truncate">{employee.name}</h2>
+            <p className="text-xs text-gray-400 truncate hidden sm:block">{employee.shift_name || 'No shift'} • {employee.employment_type.replace('_',' ')}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 ml-auto">
-          <button onClick={prevMonth} className="btn-ghost p-1.5"><ChevronLeft size={16} /></button>
-          <span className="font-semibold text-gray-700 w-32 text-center text-sm">
-            {format(new Date(year, month - 1), 'MMMM yyyy')}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button onClick={prevMonth} className="btn-ghost p-1"><ChevronLeft size={15} /></button>
+          <span className="font-semibold text-gray-700 text-xs sm:text-sm whitespace-nowrap">
+            {format(new Date(year, month - 1), 'MMM yyyy')}
           </span>
-          <button onClick={nextMonth} className="btn-ghost p-1.5"><ChevronRight size={16} /></button>
+          <button onClick={nextMonth} className="btn-ghost p-1"><ChevronRight size={15} /></button>
         </div>
       </div>
 
@@ -158,14 +159,18 @@ function AttendanceCalendar({ employee, onBack }) {
 
       {isLoading ? <PageLoader /> : (
         <div className="flex-1 overflow-auto">
-          <div className="grid grid-cols-7 gap-1 mb-1">
-            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
-              <div key={d} className="text-center text-xs font-semibold text-gray-400 py-1">{d}</div>
+          {/* Day name headers: single letter on mobile, 3-letter on sm+ */}
+          <div className="grid grid-cols-7 gap-0.5 sm:gap-1 mb-1">
+            {[['S','Sun'],['M','Mon'],['T','Tue'],['W','Wed'],['T','Thu'],['F','Fri'],['S','Sat']].map(([short, full], i) => (
+              <div key={full + i} className="text-center text-[10px] sm:text-xs font-semibold text-gray-400 py-1">
+                <span className="sm:hidden">{short}</span>
+                <span className="hidden sm:inline">{full}</span>
+              </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
             {Array.from({ length: startDay }).map((_, i) => (
-              <div key={`empty-${i}`} className="rounded-xl min-h-[80px]" />
+              <div key={`empty-${i}`} className="rounded-lg sm:rounded-xl min-h-[44px] sm:min-h-[80px]" />
             ))}
             {Array.from({ length: days }, (_, i) => {
               const day     = i + 1
@@ -176,26 +181,34 @@ function AttendanceCalendar({ employee, onBack }) {
                 <div
                   key={day}
                   onClick={() => openEdit(day)}
-                  className={`rounded-xl min-h-[80px] p-2 cursor-pointer border transition-all hover:shadow-md select-none
+                  className={`rounded-lg sm:rounded-xl min-h-[44px] sm:min-h-[80px] p-1 sm:p-2 cursor-pointer border transition-all hover:shadow-md select-none
                     ${att ? `${statusBg[att.status]} text-white border-transparent` : 'bg-gray-50 border-gray-100 hover:border-primary-200'}
                     ${isToday && !att ? 'border-primary-300 ring-1 ring-primary-200' : ''}`}
                 >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className={`text-sm font-bold ${att ? 'text-white' : isToday ? 'text-primary-600' : 'text-gray-700'}`}>{day}</span>
-                    {att && <span className="text-[10px] font-bold bg-white/20 px-1 rounded">{statusText[att.status]}</span>}
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className={`text-xs sm:text-sm font-bold ${att ? 'text-white' : isToday ? 'text-primary-600' : 'text-gray-700'}`}>{day}</span>
+                    {att && <span className="text-[9px] sm:text-[10px] font-bold bg-white/20 px-0.5 sm:px-1 rounded">{statusText[att.status]}</span>}
                   </div>
-                  {att && att.status === 'PRESENT' || att?.status === 'HALF' ? (
+                  {att && (att.status === 'PRESENT' || att.status === 'HALF') ? (
                     <div className="space-y-0.5">
-                      {att.check_in && <p className="text-[10px] text-white/90 leading-tight">In: {att.check_in.slice(0,5)}</p>}
-                      {att.check_out && <p className="text-[10px] text-white/90 leading-tight">Out: {att.check_out.slice(0,5)}</p>}
-                      {parseFloat(att.hours_worked) > 0 && <p className="text-[10px] font-semibold text-white/90 leading-tight">{parseFloat(att.hours_worked).toFixed(1)}h</p>}
-                      <div className="flex flex-wrap gap-0.5 mt-1">
-                        {att.is_late && <span className="text-[9px] bg-orange-500 text-white px-1 py-0.5 rounded font-bold">LATE</span>}
-                        {att.ot_minutes > 0 && <span className="text-[9px] bg-purple-600 text-white px-1 py-0.5 rounded font-bold">OT+{att.ot_minutes}m</span>}
+                      {/* Time details only on sm+ */}
+                      <div className="hidden sm:block space-y-0.5">
+                        {att.check_in  && <p className="text-[10px] text-white/90 leading-tight">In: {att.check_in.slice(0,5)}</p>}
+                        {att.check_out && <p className="text-[10px] text-white/90 leading-tight">Out: {att.check_out.slice(0,5)}</p>}
+                        {parseFloat(att.hours_worked) > 0 && <p className="text-[10px] font-semibold text-white/90 leading-tight">{parseFloat(att.hours_worked).toFixed(1)}h</p>}
+                      </div>
+                      {/* Mobile: just show hours */}
+                      {parseFloat(att.hours_worked) > 0 && (
+                        <p className="sm:hidden text-[9px] font-semibold text-white/90">{parseFloat(att.hours_worked).toFixed(1)}h</p>
+                      )}
+                      <div className="flex flex-wrap gap-0.5">
+                        {att.is_late && <span className="text-[8px] sm:text-[9px] bg-orange-500 text-white px-0.5 sm:px-1 rounded font-bold">L</span>}
+                        {att.ot_minutes > 0 && <span className="text-[8px] sm:text-[9px] bg-purple-600 text-white px-0.5 sm:px-1 rounded font-bold sm:hidden">OT</span>}
+                        {att.ot_minutes > 0 && <span className="hidden sm:inline text-[9px] bg-purple-600 text-white px-1 py-0.5 rounded font-bold">OT+{att.ot_minutes}m</span>}
                       </div>
                     </div>
                   ) : !att ? (
-                    <p className="text-[10px] text-gray-300 mt-1">click to mark</p>
+                    <p className="hidden sm:block text-[10px] text-gray-300 mt-1">tap</p>
                   ) : null}
                 </div>
               )

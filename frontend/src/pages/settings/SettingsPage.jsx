@@ -208,46 +208,27 @@ function GeneralTab({ data, save }) {
         <h2 className="text-base font-semibold text-gray-800 mb-4 flex items-center gap-2">
           <Percent size={17} className="text-primary-500" /> Tax &amp; GST Settings
         </h2>
-        <div className="overflow-x-auto rounded-xl border border-gray-200">
-          <table className="w-full text-sm min-w-[400px]">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="text-left px-4 py-3 text-gray-500 font-semibold w-40">Field</th>
-                <th className="text-left px-4 py-3 text-gray-500 font-semibold">Value</th>
-                <th className="text-left px-4 py-3 text-gray-500 font-semibold hidden sm:table-cell">Description</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-t border-gray-100">
-                <td className="px-4 py-3 font-medium text-gray-700">GST Rate</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number" step="0.01" min="0" max="100"
-                      className="input w-24 text-center font-semibold text-primary-600"
-                      value={form.gst_rate ?? ''}
-                      onChange={e => f('gst_rate', e.target.value)}
-                    />
-                    <span className="text-gray-500 font-medium">%</span>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-gray-400 text-xs hidden sm:table-cell">Applied to every new bill as the default tax percentage</td>
-              </tr>
-              <tr className="border-t border-gray-100">
-                <td className="px-4 py-3 font-medium text-gray-700">GSTIN</td>
-                <td className="px-4 py-3">
-                  <input
-                    className="input w-full max-w-[200px] font-mono uppercase"
-                    value={form.gstin || ''}
-                    onChange={e => f('gstin', e.target.value.toUpperCase())}
-                    placeholder="22AAAAA0000A1Z5"
-                    maxLength={15}
-                  />
-                </td>
-                <td className="px-4 py-3 text-gray-400 text-xs hidden sm:table-cell">Printed on tax invoices for GST compliance</td>
-              </tr>
-            </tbody>
-          </table>
+        <div>
+          <SettingRow icon={Percent} label="GST Rate" hint="Applied to every new bill as the default tax percentage">
+            <div className="flex items-center gap-2">
+              <input
+                type="number" step="0.01" min="0" max="100"
+                className="input w-24 text-center font-semibold text-primary-600"
+                value={form.gst_rate ?? ''}
+                onChange={e => f('gst_rate', e.target.value)}
+              />
+              <span className="text-gray-500 font-medium">%</span>
+            </div>
+          </SettingRow>
+          <SettingRow icon={Hash} label="GSTIN" hint="Printed on tax invoices for GST compliance">
+            <input
+              className="input w-full font-mono uppercase"
+              value={form.gstin || ''}
+              onChange={e => f('gstin', e.target.value.toUpperCase())}
+              placeholder="22AAAAA0000A1Z5"
+              maxLength={15}
+            />
+          </SettingRow>
         </div>
         <p className="text-xs text-gray-400 mt-3 flex items-center gap-1">
           <FileText size={12} />

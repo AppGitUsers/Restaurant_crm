@@ -11,12 +11,20 @@ import {
 
 // ── Food card ─────────────────────────────────────────
 function FoodCard({ item, onAdd }) {
-  const cartQty  = useCartStore(s =>
+  const cartQty   = useCartStore(s =>
     s.items.filter(i => !i.is_custom && i.food_item?.id === item.id).reduce((t, i) => t + i.quantity, 0)
   )
-  const inCart   = cartQty > 0
+  // Also count this item when it appears as a component inside custom cart orders
+  const customQty = useCartStore(s =>
+    s.items.filter(i => i.is_custom).reduce((t, ci) => {
+      const used = (ci.components || []).filter(c => c.id === item.id).length
+      return t + used * ci.quantity
+    }, 0)
+  )
+  const totalInCart = cartQty + customQty
+  const inCart   = totalInCart > 0
   const hasStock = item.is_available && item.makeable_count > 0
-  const atMax    = hasStock && cartQty >= item.makeable_count
+  const atMax    = hasStock && totalInCart >= item.makeable_count
   const available = hasStock && !atMax
 
   const overlayLabel = !hasStock ? 'Out of Stock' : 'Max Added'
@@ -45,7 +53,7 @@ function FoodCard({ item, onAdd }) {
         )}
         {hasStock && (
           <div className="absolute bottom-1.5 right-1.5 bg-white rounded-full px-1.5 py-0.5 text-xs text-primary-600 font-semibold shadow">
-            {item.makeable_count - cartQty}✓
+            {item.makeable_count - totalInCart}✓
           </div>
         )}
       </div>
@@ -113,6 +121,14 @@ function AddonPickerModal({ cartItem, onSave, onClose }) {
 function CustomizeModal({ onClose, onAdd }) {
   const [selected, setSelected]       = useState({})   // { typeId: foodItemObj }
   const [selectedAddons, setAddons]   = useState([])
+  const cartItems = useCartStore(s => s.items)
+
+  // How many of a food item are already reserved in the cart (regular + as components)
+  const cartUsed = (itemId) => cartItems.reduce((t, ci) => {
+    if (!ci.is_custom) return ci.food_item?.id === itemId ? t + ci.quantity : t
+    const used = (ci.components || []).filter(c => c.id === itemId).length
+    return t + used * ci.quantity
+  }, 0)
 
   const { data: customTypes = [] } = useQuery({
     queryKey: ['customizable-types'],
@@ -213,8 +229,9 @@ function CustomizeModal({ onClose, onAdd }) {
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 ml-0">
                     {typeItems.map(item => {
-                      const isSel      = selItem?.id === item.id
-                      const outOfStock = !item.is_available || item.makeable_count <= 0
+                      const isSel           = selItem?.id === item.id
+                      const effectiveAvail  = item.makeable_count - cartUsed(item.id)
+                      const outOfStock      = !item.is_available || effectiveAvail <= 0
                       return (
                         <div
                           key={item.id}
@@ -237,7 +254,10 @@ function CustomizeModal({ onClose, onAdd }) {
                               </div>
                             )}
                           </div>
-                          <p className={`text-xs font-bold mt-1 ${outOfStock ? 'text-gray-400' : 'text-primary-500'}`}>₹{parseFloat(item.price).toFixed(2)}</p>
+                          <p className={`text-xs font-bold mt-1 ${outOfStock ? 'text-gray-400' : 'text-primary-500'}`}>
+                            ₹{parseFloat(item.price).toFixed(2)}
+                            {!outOfStock && effectiveAvail < 5 && <span className="ml-1 text-[10px] text-orange-500">({effectiveAvail})</span>}
+                          </p>
                         </div>
                       )
                     })}

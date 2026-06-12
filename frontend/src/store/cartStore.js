@@ -28,9 +28,13 @@ export const useCartStore = create((set, get) => ({
   addItem: (foodItem) => {
     const items  = get().items
     const maxQty = foodItem.makeable_count ?? Infinity
-    const total  = items
+    const regularQty = items
       .filter(i => !i.is_custom && i.food_item?.id === foodItem.id)
       .reduce((s, i) => s + i.quantity, 0)
+    const customQty = items
+      .filter(i => i.is_custom)
+      .reduce((s, ci) => s + (ci.components || []).filter(c => c.id === foodItem.id).length * ci.quantity, 0)
+    const total = regularQty + customQty
 
     if (maxQty <= 0 || total >= maxQty) return false
 
@@ -86,11 +90,14 @@ export const useCartStore = create((set, get) => ({
       return
     }
 
-    const otherQty = items
+    const otherRegularQty = items
       .filter(i => !i.is_custom && i.food_item?.id === ci.food_item?.id && i.cartId !== cartId)
       .reduce((s, i) => s + i.quantity, 0)
+    const customQty = items
+      .filter(i => i.is_custom)
+      .reduce((s, ci2) => s + (ci2.components || []).filter(c => c.id === ci.food_item.id).length * ci2.quantity, 0)
     const maxQty   = ci.food_item.makeable_count ?? Infinity
-    const allowed  = Math.max(0, maxQty - otherQty)
+    const allowed  = Math.max(0, maxQty - otherRegularQty - customQty)
     set({ items: items.map(i =>
       i.cartId === cartId ? { ...i, quantity: Math.min(qty, allowed) } : i
     )})

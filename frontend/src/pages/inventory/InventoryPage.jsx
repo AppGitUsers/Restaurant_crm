@@ -235,7 +235,19 @@ function InvoiceTab() {
 
   const save         = useMutation({ mutationFn: d => inventoryAPI.invoices.create(d), onSuccess: () => { qc.invalidateQueries(['invoices']); setModal(false); toast.success('Invoice created') } })
   const markReceived = useMutation({ mutationFn: id => inventoryAPI.invoices.markReceived(id), onSuccess: () => { qc.invalidateQueries(['invoices']); qc.invalidateQueries(['stock']); toast.success('Stock updated from invoice') } })
-  const addPayment   = useMutation({ mutationFn: ({ id, data }) => inventoryAPI.invoices.addPayment(id, data), onSuccess: () => { qc.invalidateQueries(['invoices']); setPayModal(null); toast.success('Payment recorded') } })
+  const addPayment   = useMutation({
+    mutationFn: ({ id, data }) => inventoryAPI.invoices.addPayment(id, data),
+    onSuccess: (response) => {
+      const updated = response.data
+      // Directly patch the cached list so paid/balance/status update instantly
+      qc.setQueryData(['invoices', search, statusFilter], (old) =>
+        Array.isArray(old) ? old.map(inv => inv.id === updated.id ? updated : inv) : old
+      )
+      qc.invalidateQueries({ queryKey: ['invoices'] })
+      setPayModal(null)
+      toast.success('Payment recorded')
+    },
+  })
 
   const calcSubtotal = items =>
     items.reduce((s, r) => s + (parseFloat(r.quantity) || 0) * (parseFloat(r.unit_price) || 0), 0)
