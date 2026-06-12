@@ -107,9 +107,11 @@ export default function FinancePage() {
     { id: 'reports',       label: 'Reports' },
   ]
 
-  // Monthly data totals
-  const incomeRows  = monthlyData?.income   || []
-  const expenseRows = monthlyData?.expenses || []
+  // Monthly data totals — deduplicate by tx_id to avoid React key warnings if backend returns duplicates
+  const incomeRows  = [...new Map((monthlyData?.income   || []).map((r, i) => [r.tx_id ?? i, r])).values()]
+  const expenseRows = [...new Map((monthlyData?.expenses || []).map((r, i) => [r.tx_id ?? i, r])).values()]
+  // Deduplicate transactions by id for the same reason
+  const txnsUniq    = [...new Map((txns || []).map(t => [t.id, t])).values()]
   const incTotal  = incomeRows.reduce((s, r) => s + r.bill_amount, 0)
   const incBase   = incomeRows.reduce((s, r) => s + r.base_amount, 0)
   const incGst    = incomeRows.reduce((s, r) => s + r.gst_amount,  0)
@@ -256,7 +258,7 @@ export default function FinancePage() {
               </thead>
               <tbody>
                 {txLoading && <tr><td colSpan={6} className="text-center py-8 text-gray-400">Loading…</td></tr>}
-                {(txns || []).map(t => (
+                {txnsUniq.map(t => (
                   <tr key={t.id}>
                     <td><StatusBadge status={t.tx_type} /></td>
                     <td><span className="badge-gray text-xs">{t.category}</span></td>
@@ -272,14 +274,14 @@ export default function FinancePage() {
                     <td className="text-gray-400">{t.tx_date}</td>
                   </tr>
                 ))}
-                {!txLoading && (txns || []).length === 0 && <tr><td colSpan={6}><Empty message="No transactions" /></td></tr>}
+                {!txLoading && txnsUniq.length === 0 && <tr><td colSpan={6}><Empty message="No transactions" /></td></tr>}
               </tbody>
             </table>
           </div>
           {/* Mobile cards */}
           <div className="sm:hidden space-y-3">
             {txLoading && <p className="text-center py-8 text-gray-400">Loading…</p>}
-            {(txns || []).map(t => (
+            {txnsUniq.map(t => (
               <div key={t.id} className="card flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2">
                   <StatusBadge status={t.tx_type} />
@@ -297,7 +299,7 @@ export default function FinancePage() {
                 {t.description && <p className="text-xs text-gray-500">{t.description}</p>}
               </div>
             ))}
-            {!txLoading && (txns || []).length === 0 && <Empty message="No transactions" />}
+            {!txLoading && txnsUniq.length === 0 && <Empty message="No transactions" />}
           </div>
         </div>
       )}
