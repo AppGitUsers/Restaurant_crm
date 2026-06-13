@@ -1,6 +1,6 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from django.db.models import Sum, Count, Avg, Case, When, F, Value, CharField
+from django.db.models import Sum, Count, Avg, Case, When, F, Value, CharField, ExpressionWrapper, DecimalField
 from django.utils import timezone
 import datetime
 
@@ -63,7 +63,15 @@ class DashboardSummaryView(APIView):
                          ),
                      )
                      .values('display_name', 'display_type')
-                     .annotate(total_qty=Sum('quantity'), total_revenue=Sum('unit_price'))
+                     .annotate(
+                         total_qty=Sum('quantity'),
+                         total_revenue=Sum(
+                             ExpressionWrapper(
+                                 F('quantity') * (F('unit_price') + F('addon_unit_price')),
+                                 output_field=DecimalField(max_digits=12, decimal_places=2),
+                             )
+                         ),
+                     )
                      .order_by('-total_qty')[:10])
 
         # ── Low makeable items ────────────────────────────────────

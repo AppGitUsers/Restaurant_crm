@@ -198,7 +198,10 @@ export default function Dashboard() {
                     <p className="text-xs text-gray-400">{item.display_type}</p>
                   </div>
                 </div>
-                <span className="badge-green">{item.total_qty} sold</span>
+                <div className="text-right">
+                  <p className="text-xs font-semibold text-gray-700">₹{parseFloat(item.total_revenue || 0).toLocaleString()}</p>
+                  <span className="badge-green">{item.total_qty} sold</span>
+                </div>
               </div>
             ))}
             {top_selling_items.length === 0 && (
