@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import FoodType, FoodItem, Ingredient, RecipeIngredient, Addon
+from .models import FoodType, FoodItem, Ingredient, RecipeIngredient, Addon, ComboComponent
 
 
 class AddonSerializer(serializers.ModelSerializer):
@@ -72,12 +72,23 @@ class RecipeIngredientSerializer(serializers.ModelSerializer):
             return 0.0
 
 
+class ComboComponentSerializer(serializers.ModelSerializer):
+    component_name      = serializers.CharField(source='component.name', read_only=True)
+    component_price     = serializers.DecimalField(source='component.price', max_digits=10, decimal_places=2, read_only=True)
+    component_food_type = serializers.IntegerField(source='component.food_type_id', read_only=True)
+
+    class Meta:
+        model  = ComboComponent
+        fields = ['id', 'component', 'component_name', 'component_price', 'component_food_type']
+
+
 class FoodItemSerializer(serializers.ModelSerializer):
     food_type_name         = serializers.CharField(source='food_type.name', read_only=True)
     food_type_icon         = serializers.CharField(source='food_type.icon', read_only=True)
     food_type_allow_addons = serializers.BooleanField(source='food_type.allow_addons', read_only=True)
     food_type_addons       = AddonSerializer(source='food_type.addons', many=True, read_only=True)
     recipe_ingredients     = RecipeIngredientSerializer(many=True, read_only=True)
+    combo_components       = ComboComponentSerializer(many=True, read_only=True)
     photo_url              = serializers.SerializerMethodField()
 
     class Meta:
@@ -85,8 +96,9 @@ class FoodItemSerializer(serializers.ModelSerializer):
         fields = ['id', 'food_type', 'food_type_name', 'food_type_icon',
                   'food_type_allow_addons', 'food_type_addons',
                   'name', 'description', 'price', 'photo', 'photo_url',
-                  'is_available', 'is_active', 'tracks_stock', 'makeable_count',
-                  'recipe_ingredients', 'created_at', 'updated_at']
+                  'is_available', 'is_active', 'tracks_stock', 'is_combo',
+                  'makeable_count', 'recipe_ingredients', 'combo_components',
+                  'created_at', 'updated_at']
 
     def get_photo_url(self, obj):
         request = self.context.get('request')

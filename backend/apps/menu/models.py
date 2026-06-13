@@ -65,6 +65,7 @@ class FoodItem(models.Model):
     is_available   = models.BooleanField(default=True)
     is_active      = models.BooleanField(default=True)
     tracks_stock   = models.BooleanField(default=True)
+    is_combo       = models.BooleanField(default=False)
     makeable_count = models.IntegerField(default=0)
     created_at     = models.DateTimeField(auto_now_add=True)
     updated_at     = models.DateTimeField(auto_now=True)
@@ -82,6 +83,19 @@ class FoodItem(models.Model):
         if not self.tracks_stock:
             self.makeable_count = 999
             self.is_available   = True
+            self.save(update_fields=['makeable_count', 'is_available'])
+            return
+
+        if self.is_combo:
+            comp_ids = list(self.combo_components.values_list('component_id', flat=True))
+            if not comp_ids:
+                self.makeable_count = 0
+                self.is_available   = False
+                self.save(update_fields=['makeable_count', 'is_available'])
+                return
+            counts = list(FoodItem.objects.filter(id__in=comp_ids).values_list('makeable_count', flat=True))
+            self.makeable_count = min(counts) if counts else 0
+            self.is_available   = self.makeable_count > 0
             self.save(update_fields=['makeable_count', 'is_available'])
             return
 
@@ -123,3 +137,15 @@ class RecipeIngredient(models.Model):
 
     def __str__(self):
         return f"{self.food_item.name} ← {self.ingredient.name} × {self.quantity_required}{self.ingredient.unit}"
+
+
+class ComboComponent(models.Model):
+    combo     = models.ForeignKey(FoodItem, on_delete=models.CASCADE, related_name='combo_components')
+    component = models.ForeignKey(FoodItem, on_delete=models.CASCADE, related_name='used_in_combos')
+
+    class Meta:
+        unique_together = ['combo', 'component']
+        ordering        = ['id']
+
+    def __str__(self):
+        return f"{self.combo.name} ← {self.component.name}"

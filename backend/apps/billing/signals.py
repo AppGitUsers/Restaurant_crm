@@ -15,14 +15,40 @@ def handle_order_paid(sender, instance, **kwargs):
     if already:
         return
 
-    # Deduct stock for each order item (skip custom items and non-stock-tracked items)
-    for order_item in instance.items.select_related('food_item').all():
+    # Deduct stock for each order item
+    for order_item in instance.items.select_related('food_item').prefetch_related(
+        'food_item__combo_components__component__recipe_ingredients__ingredient',
+        'food_item__recipe_ingredients__ingredient',
+    ).all():
         if not order_item.food_item:
             continue
-        if not order_item.food_item.tracks_stock:
+
+        food_item = order_item.food_item
+
+        if food_item.is_combo:
+            # Deduct each component's recipe ingredients
+            for cc in food_item.combo_components.all():
+                component = cc.component
+                if not component.tracks_stock:
+                    continue
+                for ri in component.recipe_ingredients.select_related('ingredient').all():
+                    stock, _ = Stock.objects.get_or_create(ingredient=ri.ingredient)
+                    deduct = ri.quantity_required * order_item.quantity
+                    stock.current_quantity = max(0, stock.current_quantity - deduct)
+                    stock.save(update_fields=['current_quantity'])
+                    StockTransaction.objects.create(
+                        ingredient = ri.ingredient,
+                        tx_type    = 'OUT',
+                        quantity   = deduct,
+                        reference  = f"order:{instance.order_number}",
+                        note       = f"Sold: {food_item.name} × {order_item.quantity} (via {component.name})",
+                    )
             continue
-        recipe_ingredients = order_item.food_item.recipe_ingredients.select_related('ingredient').all()
-        for ri in recipe_ingredients:
+
+        if not food_item.tracks_stock:
+            continue
+
+        for ri in food_item.recipe_ingredients.select_related('ingredient').all():
             stock, _ = Stock.objects.get_or_create(ingredient=ri.ingredient)
             deduct = ri.quantity_required * order_item.quantity
             stock.current_quantity = max(0, stock.current_quantity - deduct)
@@ -32,13 +58,15 @@ def handle_order_paid(sender, instance, **kwargs):
                 tx_type    = 'OUT',
                 quantity   = deduct,
                 reference  = f"order:{instance.order_number}",
-                note       = f"Sold: {order_item.food_item.name} × {order_item.quantity}",
+                note       = f"Sold: {food_item.name} × {order_item.quantity}",
             )
 
-    # Recalculate makeable counts
+    # Two-pass recalc: components first, then combos (combos read component counts)
     try:
         from apps.menu.models import FoodItem
-        for food in FoodItem.objects.filter(is_active=True):
+        for food in FoodItem.objects.filter(is_active=True, is_combo=False):
+            food.update_makeable_count()
+        for food in FoodItem.objects.filter(is_active=True, is_combo=True):
             food.update_makeable_count()
     except Exception:
         pass

@@ -46,7 +46,9 @@ class StockViewSet(viewsets.ModelViewSet):
             note       = note,
         )
         from apps.menu.models import FoodItem
-        for food in FoodItem.objects.filter(is_active=True):
+        for food in FoodItem.objects.filter(is_active=True, is_combo=False):
+            food.update_makeable_count()
+        for food in FoodItem.objects.filter(is_active=True, is_combo=True):
             food.update_makeable_count()
         return Response(StockSerializer(stock).data)
 

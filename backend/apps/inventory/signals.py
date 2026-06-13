@@ -62,10 +62,12 @@ def push_stock_on_receive(sender, instance, **kwargs):
             note       = f"Received from {instance.vendor.name}",
         )
 
-    # Recalculate makeable counts for all food items
+    # Two-pass recalc: components first, then combos
     try:
         from apps.menu.models import FoodItem
-        for food in FoodItem.objects.filter(is_active=True):
+        for food in FoodItem.objects.filter(is_active=True, is_combo=False):
+            food.update_makeable_count()
+        for food in FoodItem.objects.filter(is_active=True, is_combo=True):
             food.update_makeable_count()
     except Exception:
         pass

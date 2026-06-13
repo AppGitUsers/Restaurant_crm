@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { menuAPI } from '@/api'
 import { PageLoader, Modal, SearchBar, StatusBadge, ConfirmDialog, Field, Empty } from '@/components/ui'
 import toast from 'react-hot-toast'
-import { Plus, Edit2, Trash2, ChefHat, UtensilsCrossed, Layers, Sparkles } from 'lucide-react'
+import { Plus, Edit2, Trash2, ChefHat, UtensilsCrossed, Layers, Sparkles, Wand2, Check } from 'lucide-react'
 
 // ── Food Type Tab ─────────────────────────────────────
 function FoodTypeTab() {
@@ -529,11 +529,227 @@ function AddonsTab() {
   )
 }
 
+// ── Combo Tab ────────────────────────────────────────
+function ComboTab() {
+  const qc = useQueryClient()
+  const [modal, setModal] = useState(null)   // null | 'form'
+  const [sel, setSel]     = useState(null)   // combo item being edited
+  const [formName, setFormName] = useState('')
+  const [formPrice, setFormPrice] = useState('')
+  const [selected, setSelected] = useState({}) // { typeId: foodItem }
+  const [del, setDel]     = useState(null)
+
+  const { data: allItems, isLoading: loadingItems } = useQuery({
+    queryKey: ['food-items'],
+    queryFn:  () => menuAPI.items.list().then(r => r.data.results || r.data),
+  })
+  const { data: allTypes } = useQuery({
+    queryKey: ['food-types'],
+    queryFn:  () => menuAPI.types.list().then(r => r.data.results || r.data),
+  })
+
+  const combos       = (allItems || []).filter(i => i.is_combo && i.is_active)
+  const customTypes  = (allTypes  || []).filter(t => t.is_active && t.is_customizable)
+  const itemsByType  = (typeId) => (allItems || []).filter(i => !i.is_combo && i.is_active && i.food_type === typeId)
+
+  const autoPrice = useMemo(
+    () => Object.values(selected).reduce((s, item) => s + parseFloat(item?.price || 0), 0),
+    [selected]
+  )
+
+  const openCreate = () => {
+    setSel(null); setFormName(''); setFormPrice(''); setSelected({}); setModal('form')
+  }
+  const openEdit = (combo) => {
+    setSel(combo)
+    setFormName(combo.name)
+    setFormPrice(String(combo.price))
+    const pre = {}
+    ;(combo.combo_components || []).forEach(cc => {
+      const full = (allItems || []).find(i => i.id === cc.component)
+      if (full) pre[full.food_type] = full
+    })
+    setSelected(pre)
+    setModal('form')
+  }
+
+  const toggleItem = (typeId, item) => {
+    setSelected(prev => {
+      if (prev[typeId]?.id === item.id) {
+        const next = { ...prev }; delete next[typeId]; return next
+      }
+      return { ...prev, [typeId]: item }
+    })
+  }
+
+  const create = useMutation({
+    mutationFn: (data) => menuAPI.items.createCombo(data),
+    onSuccess: () => { qc.invalidateQueries(['food-items']); setModal(null); toast.success('Combo created!') },
+    onError:   () => toast.error('Failed to create combo'),
+  })
+  const update = useMutation({
+    mutationFn: ({ id, data }) => menuAPI.items.setComponents(id, data),
+    onSuccess: () => { qc.invalidateQueries(['food-items']); setModal(null); toast.success('Combo updated!') },
+    onError:   () => toast.error('Failed to update combo'),
+  })
+  const remove = useMutation({
+    mutationFn: (id) => menuAPI.items.delete(id),
+    onSuccess: () => { qc.invalidateQueries(['food-items']); setDel(null); toast.success('Deleted') },
+  })
+
+  const handleSave = () => {
+    const componentIds = Object.values(selected).map(i => i.id)
+    if (!formName.trim()) { toast.error('Enter a combo name'); return }
+    if (componentIds.length < 1) { toast.error('Select at least one item'); return }
+    const price = parseFloat(formPrice) || autoPrice
+    if (sel) {
+      update.mutate({ id: sel.id, data: { name: formName.trim(), price, components: componentIds } })
+    } else {
+      create.mutate({ name: formName.trim(), price, components: componentIds })
+    }
+  }
+
+  const isPending = create.isPending || update.isPending
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <h2 className="font-semibold text-gray-700">Pre-defined Combos</h2>
+          <p className="text-xs text-gray-400">Build combos from customizable items — they appear as a category in billing</p>
+        </div>
+        <button onClick={openCreate} className="btn-primary"><Plus size={15} />New Combo</button>
+      </div>
+
+      {loadingItems ? <PageLoader /> : (
+        combos.length === 0
+          ? <Empty message="No combos yet. Click 'New Combo' to build one." icon={<Wand2 size={48} />} />
+          : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {combos.map(combo => (
+                <div key={combo.id} className="card flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-semibold text-gray-800">{combo.name}</p>
+                    <span className={combo.is_available ? 'badge-green' : 'badge-red'}>
+                      {combo.is_available ? `${combo.makeable_count} avail` : 'Out of stock'}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {(combo.combo_components || []).map(cc => (
+                      <span key={cc.id} className="text-xs bg-primary-50 text-primary-700 px-2 py-0.5 rounded-full">
+                        {cc.component_name}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-lg font-bold text-primary-500">₹{parseFloat(combo.price).toFixed(2)}</p>
+                  <div className="flex gap-1 pt-1 border-t border-gray-50">
+                    <button onClick={() => openEdit(combo)} className="btn-ghost py-1 text-xs flex-1"><Edit2 size={12} />Edit</button>
+                    <button onClick={() => setDel(combo)} className="btn-ghost py-1 text-xs text-red-400"><Trash2 size={12} /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+      )}
+
+      {/* Builder Modal */}
+      <Modal open={modal === 'form'} onClose={() => setModal(null)}
+        title={sel ? `Edit Combo — ${sel.name}` : 'New Combo'} size="lg"
+        footer={<>
+          <button onClick={() => setModal(null)} className="btn-ghost">Cancel</button>
+          <button onClick={handleSave} disabled={isPending} className="btn-primary">
+            <Wand2 size={14} />{isPending ? 'Saving…' : 'Save Combo'}
+          </button>
+        </>}
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Combo Name" required>
+              <input className="input" value={formName} onChange={e => setFormName(e.target.value)} placeholder="e.g. Waffle Delight" />
+            </Field>
+            <Field label={`Price (₹) — auto: ₹${autoPrice.toFixed(2)}`}>
+              <input type="number" step="0.01" className="input" value={formPrice}
+                onChange={e => setFormPrice(e.target.value)}
+                placeholder={autoPrice.toFixed(2)} />
+            </Field>
+          </div>
+
+          <p className="text-xs text-gray-400">Pick one item per category to build this combo:</p>
+
+          {customTypes.length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-6">No customizable categories found. Mark categories as "Customizable" in the Categories tab first.</p>
+          )}
+
+          <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
+            {customTypes.map(type => {
+              const typeItems = itemsByType(type.id)
+              const selItem   = selected[type.id]
+              return (
+                <div key={type.id}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-base">{type.icon}</span>
+                    <h4 className="font-semibold text-gray-700 text-sm">{type.name}</h4>
+                    <span className="text-xs text-gray-400">(pick one)</span>
+                  </div>
+                  {typeItems.length === 0
+                    ? <p className="text-xs text-gray-400 ml-6">No active items in this category</p>
+                    : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {typeItems.map(item => {
+                          const isSel = selItem?.id === item.id
+                          return (
+                            <div key={item.id} onClick={() => toggleItem(type.id, item)}
+                              className={`relative p-3 rounded-xl border-2 cursor-pointer transition-all select-none
+                                ${isSel ? 'border-primary-400 bg-primary-50' : 'border-gray-100 hover:border-gray-200 bg-white'}`}
+                            >
+                              <div className="flex items-start justify-between gap-1">
+                                <p className="text-sm font-medium text-gray-800 line-clamp-2 flex-1">{item.name}</p>
+                                <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center
+                                  ${isSel ? 'border-primary-500 bg-primary-500' : 'border-gray-300'}`}>
+                                  {isSel && <Check size={9} className="text-white" />}
+                                </div>
+                              </div>
+                              <p className="text-xs font-bold text-primary-500 mt-1">₹{parseFloat(item.price).toFixed(2)}</p>
+                              <p className="text-[10px] text-gray-400 mt-0.5">{item.makeable_count} avail</p>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  }
+                </div>
+              )
+            })}
+          </div>
+
+          {Object.keys(selected).length > 0 && (
+            <div className="bg-primary-50 rounded-xl p-3">
+              <p className="text-xs font-semibold text-primary-700 mb-1">Selected components:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {Object.values(selected).map(item => (
+                  <span key={item.id} className="text-xs bg-white text-primary-700 border border-primary-200 px-2 py-0.5 rounded-full">
+                    {item.name} — ₹{parseFloat(item.price).toFixed(2)}
+                  </span>
+                ))}
+              </div>
+              <p className="text-xs text-primary-600 font-semibold mt-2">Total: ₹{autoPrice.toFixed(2)}</p>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      <ConfirmDialog open={!!del} onClose={() => setDel(null)} onConfirm={() => remove.mutate(del?.id)}
+        title="Delete Combo" message={`Delete combo "${del?.name}"?`} danger />
+    </div>
+  )
+}
+
 // ── Main MenuPage ─────────────────────────────────────
 export default function MenuPage() {
   const [tab, setTab] = useState('items')
   const tabs = [
     { id: 'items',       label: 'Food Items',   icon: <UtensilsCrossed size={15} /> },
+    { id: 'combos',      label: 'Combos',       icon: <Wand2 size={15} /> },
     { id: 'types',       label: 'Categories',   icon: <Layers size={15} /> },
     { id: 'addons',      label: 'Add-ons',      icon: <Sparkles size={15} /> },
     { id: 'ingredients', label: 'Ingredients',  icon: <ChefHat size={15} /> },
@@ -561,6 +777,7 @@ export default function MenuPage() {
       </div>
 
       {tab === 'items'       && <FoodItemTab />}
+      {tab === 'combos'      && <ComboTab />}
       {tab === 'types'       && <FoodTypeTab />}
       {tab === 'addons'      && <AddonsTab />}
       {tab === 'ingredients' && <IngredientTab />}
