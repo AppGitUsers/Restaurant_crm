@@ -23,7 +23,7 @@ function FoodCard({ item, onAdd }) {
   )
   const totalInCart = cartQty + customQty
   const inCart   = totalInCart > 0
-  const hasStock = item.tracks_stock ? (item.is_available && item.makeable_count > 0) : true
+  const hasStock = item.tracks_stock ? (item.is_available && item.makeable_count > 0) : item.is_available
   const atMax    = item.tracks_stock ? (hasStock && totalInCart >= item.makeable_count) : false
   const available = hasStock && !atMax
 
@@ -231,7 +231,7 @@ function CustomizeModal({ onClose, onAdd }) {
                     {typeItems.map(item => {
                       const isSel           = selItem?.id === item.id
                       const effectiveAvail  = item.tracks_stock ? (item.makeable_count - cartUsed(item.id)) : Infinity
-                      const outOfStock      = item.tracks_stock ? (!item.is_available || effectiveAvail <= 0) : false
+                      const outOfStock      = item.tracks_stock ? (!item.is_available || effectiveAvail <= 0) : !item.is_available
                       return (
                         <div
                           key={item.id}
