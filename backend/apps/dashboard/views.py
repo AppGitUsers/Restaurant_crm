@@ -1,6 +1,6 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from django.db.models import Sum, Count, Avg
+from django.db.models import Sum, Count, Avg, Case, When, F, Value, CharField
 from django.utils import timezone
 import datetime
 
@@ -50,7 +50,19 @@ class DashboardSummaryView(APIView):
         from apps.billing.models import OrderItem
         top_items = (OrderItem.objects
                      .filter(order__status='PAID')
-                     .values('food_item__name', 'food_item__food_type__name')
+                     .annotate(
+                         display_name=Case(
+                             When(food_item__isnull=False, then=F('food_item__name')),
+                             default=F('custom_name'),
+                             output_field=CharField(),
+                         ),
+                         display_type=Case(
+                             When(food_item__isnull=False, then=F('food_item__food_type__name')),
+                             default=Value('Custom'),
+                             output_field=CharField(),
+                         ),
+                     )
+                     .values('display_name', 'display_type')
                      .annotate(total_qty=Sum('quantity'), total_revenue=Sum('unit_price'))
                      .order_by('-total_qty')[:10])
 

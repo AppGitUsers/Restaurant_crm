@@ -194,8 +194,8 @@ export default function Dashboard() {
                     {i + 1}
                   </span>
                   <div>
-                    <p className="text-sm font-medium text-gray-700">{item.food_item__name}</p>
-                    <p className="text-xs text-gray-400">{item.food_item__food_type__name}</p>
+                    <p className="text-sm font-medium text-gray-700">{item.display_name}</p>
+                    <p className="text-xs text-gray-400">{item.display_type}</p>
                   </div>
                 </div>
                 <span className="badge-green">{item.total_qty} sold</span>
