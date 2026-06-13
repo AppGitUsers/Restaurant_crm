@@ -128,7 +128,7 @@ class StaffPayment(models.Model):
         # Record in finance
         try:
             from apps.finance.models import Transaction
-            Transaction.objects.get_or_create(
+            Transaction.objects.update_or_create(
                 reference=f"staff_payment:{self.id}",
                 defaults=dict(
                     tx_type     = 'EXPENSE',
