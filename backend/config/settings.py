@@ -134,3 +134,8 @@ CORS_ALLOWED_ORIGINS = config(
     default='http://localhost:5173'
 ).split(',')
 CORS_ALLOW_CREDENTIALS = True
+
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE   = True
+    CSRF_COOKIE_SECURE      = True
