@@ -23,8 +23,8 @@ function FoodCard({ item, onAdd }) {
   )
   const totalInCart = cartQty + customQty
   const inCart   = totalInCart > 0
-  const hasStock = item.is_available && item.makeable_count > 0
-  const atMax    = hasStock && totalInCart >= item.makeable_count
+  const hasStock = item.tracks_stock ? (item.is_available && item.makeable_count > 0) : true
+  const atMax    = item.tracks_stock ? (hasStock && totalInCart >= item.makeable_count) : false
   const available = hasStock && !atMax
 
   const overlayLabel = !hasStock ? 'Out of Stock' : 'Max Added'
@@ -51,7 +51,7 @@ function FoodCard({ item, onAdd }) {
             <span className="text-white text-xs font-bold">{cartQty}</span>
           </div>
         )}
-        {hasStock && (
+        {hasStock && item.tracks_stock && (
           <div className="absolute bottom-1.5 right-1.5 bg-white rounded-full px-1.5 py-0.5 text-xs text-primary-600 font-semibold shadow">
             {item.makeable_count - totalInCart}✓
           </div>
@@ -230,8 +230,8 @@ function CustomizeModal({ onClose, onAdd }) {
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 ml-0">
                     {typeItems.map(item => {
                       const isSel           = selItem?.id === item.id
-                      const effectiveAvail  = item.makeable_count - cartUsed(item.id)
-                      const outOfStock      = !item.is_available || effectiveAvail <= 0
+                      const effectiveAvail  = item.tracks_stock ? (item.makeable_count - cartUsed(item.id)) : Infinity
+                      const outOfStock      = item.tracks_stock ? (!item.is_available || effectiveAvail <= 0) : false
                       return (
                         <div
                           key={item.id}
@@ -256,7 +256,7 @@ function CustomizeModal({ onClose, onAdd }) {
                           </div>
                           <p className={`text-xs font-bold mt-1 ${outOfStock ? 'text-gray-400' : 'text-primary-500'}`}>
                             ₹{parseFloat(item.price).toFixed(2)}
-                            {!outOfStock && effectiveAvail < 5 && <span className="ml-1 text-[10px] text-orange-500">({effectiveAvail})</span>}
+                            {!outOfStock && item.tracks_stock && effectiveAvail < 5 && <span className="ml-1 text-[10px] text-orange-500">({effectiveAvail})</span>}
                           </p>
                         </div>
                       )

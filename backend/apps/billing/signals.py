@@ -15,9 +15,11 @@ def handle_order_paid(sender, instance, **kwargs):
     if already:
         return
 
-    # Deduct stock for each order item (skip custom items — no food_item)
+    # Deduct stock for each order item (skip custom items and non-stock-tracked items)
     for order_item in instance.items.select_related('food_item').all():
         if not order_item.food_item:
+            continue
+        if not order_item.food_item.tracks_stock:
             continue
         recipe_ingredients = order_item.food_item.recipe_ingredients.select_related('ingredient').all()
         for ri in recipe_ingredients:

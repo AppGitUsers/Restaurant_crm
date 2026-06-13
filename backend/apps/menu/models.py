@@ -64,6 +64,7 @@ class FoodItem(models.Model):
     photo          = models.ImageField(upload_to='menu/photos/', blank=True, null=True)
     is_available   = models.BooleanField(default=True)
     is_active      = models.BooleanField(default=True)
+    tracks_stock   = models.BooleanField(default=True)
     makeable_count = models.IntegerField(default=0)
     created_at     = models.DateTimeField(auto_now_add=True)
     updated_at     = models.DateTimeField(auto_now=True)
@@ -77,6 +78,13 @@ class FoodItem(models.Model):
     def update_makeable_count(self):
         """Recalculate how many of this item can be made from current inventory."""
         from apps.inventory.models import Stock
+
+        if not self.tracks_stock:
+            self.makeable_count = 999
+            self.is_available   = True
+            self.save(update_fields=['makeable_count', 'is_available'])
+            return
+
         recipe_items = self.recipe_ingredients.select_related('ingredient').all()
 
         if not recipe_items.exists():

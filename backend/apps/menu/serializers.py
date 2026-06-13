@@ -85,7 +85,7 @@ class FoodItemSerializer(serializers.ModelSerializer):
         fields = ['id', 'food_type', 'food_type_name', 'food_type_icon',
                   'food_type_allow_addons', 'food_type_addons',
                   'name', 'description', 'price', 'photo', 'photo_url',
-                  'is_available', 'is_active', 'makeable_count',
+                  'is_available', 'is_active', 'tracks_stock', 'makeable_count',
                   'recipe_ingredients', 'created_at', 'updated_at']
 
     def get_photo_url(self, obj):
@@ -99,4 +99,4 @@ class FoodItemWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model  = FoodItem
         fields = ['id', 'food_type', 'name', 'description', 'price',
-                  'photo', 'is_available', 'is_active']
+                  'photo', 'is_available', 'is_active', 'tracks_stock']

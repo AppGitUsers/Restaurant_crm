@@ -27,7 +27,7 @@ export const useCartStore = create((set, get) => ({
 
   addItem: (foodItem) => {
     const items  = get().items
-    const maxQty = foodItem.makeable_count ?? Infinity
+    const maxQty = foodItem.tracks_stock === false ? Infinity : (foodItem.makeable_count ?? Infinity)
     const regularQty = items
       .filter(i => !i.is_custom && i.food_item?.id === foodItem.id)
       .reduce((s, i) => s + i.quantity, 0)
@@ -84,8 +84,8 @@ export const useCartStore = create((set, get) => ({
     const ci       = items.find(i => i.cartId === cartId)
     if (!ci) return
 
-    // Custom items have no stock limit
-    if (ci.is_custom) {
+    // Custom items and non-stock-tracked items have no stock limit
+    if (ci.is_custom || ci.food_item?.tracks_stock === false) {
       set({ items: items.map(i => i.cartId === cartId ? { ...i, quantity: qty } : i) })
       return
     }

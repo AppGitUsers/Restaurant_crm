@@ -240,7 +240,7 @@ function FoodItemTab() {
   const [sel, setSel]           = useState(null)
   const [recipeModal, setRecipeModal] = useState(null)
   const [del, setDel]           = useState(null)
-  const [form, setForm]         = useState({ food_type: '', name: '', description: '', price: '', is_available: true, is_active: true })
+  const [form, setForm]         = useState({ food_type: '', name: '', description: '', price: '', is_available: true, is_active: true, tracks_stock: true })
   const [photoFile, setPhotoFile] = useState(null)
   const [recipe, setRecipe]     = useState([])  // [{ingredient, quantity_required}]
 
@@ -269,8 +269,8 @@ function FoodItemTab() {
     onSuccess: () => { qc.invalidateQueries(['food-items']); setRecipeModal(null); toast.success('Recipe saved!') },
   })
 
-  const openCreate = () => { setSel(null); setForm({ food_type: '', name: '', description: '', price: '', is_available: true, is_active: true }); setPhotoFile(null); setModal('form') }
-  const openEdit   = (item) => { setSel(item); setForm({ food_type: item.food_type, name: item.name, description: item.description, price: item.price, is_available: item.is_available, is_active: item.is_active }); setPhotoFile(null); setModal('form') }
+  const openCreate = () => { setSel(null); setForm({ food_type: '', name: '', description: '', price: '', is_available: true, is_active: true, tracks_stock: true }); setPhotoFile(null); setModal('form') }
+  const openEdit   = (item) => { setSel(item); setForm({ food_type: item.food_type, name: item.name, description: item.description, price: item.price, is_available: item.is_available, is_active: item.is_active, tracks_stock: item.tracks_stock ?? true }); setPhotoFile(null); setModal('form') }
   const openRecipe = (item) => {
     setSel(item)
     setRecipe(item.recipe_ingredients.map(r => ({ ingredient: r.ingredient, quantity_required: r.quantity_required })))
@@ -318,7 +318,9 @@ function FoodItemTab() {
                       </div>
                       <div className="flex items-center justify-between">
                         <span className={item.is_available ? 'badge-green' : 'badge-red'}>
-                          {item.is_available ? `${item.makeable_count} can make` : 'Unavailable'}
+                          {item.is_available
+                            ? (item.tracks_stock ? `${item.makeable_count} can make` : '∞ no stock limit')
+                            : 'Unavailable'}
                         </span>
                         <span className={item.is_active ? 'badge-green' : 'badge-gray'}>{item.is_active ? 'Active' : 'Inactive'}</span>
                       </div>
@@ -369,6 +371,19 @@ function FoodItemTab() {
             Active
           </label>
         </div>
+        <Field label="Reduces Stock?">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <div
+              onClick={() => setForm({ ...form, tracks_stock: !form.tracks_stock })}
+              className={`relative w-10 h-5 rounded-full transition-colors ${form.tracks_stock ? 'bg-primary-500' : 'bg-gray-200'}`}
+            >
+              <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.tracks_stock ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </div>
+            <span className="text-sm text-gray-600">
+              {form.tracks_stock ? 'Yes — deducts from inventory when sold' : 'No — unlimited, no inventory impact'}
+            </span>
+          </label>
+        </Field>
       </Modal>
 
       {/* Recipe Modal */}
