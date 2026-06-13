@@ -160,13 +160,12 @@ export const useCartStore = create((set, get) => ({
   }, 0),
 
   getTax: () => {
-    const sub = get().getSubtotal()
-    const dis = get().discount
-    return ((sub - dis) * get().taxPercent) / 100
+    const taxable = Math.max(0, get().getSubtotal() - get().discount)
+    return (taxable * get().taxPercent) / 100
   },
   getTotal: () => {
-    const sub = get().getSubtotal()
-    return sub - get().discount + get().getTax()
+    const taxable = Math.max(0, get().getSubtotal() - get().discount)
+    return taxable + get().getTax()
   },
   getItemCount: () => get().items.reduce((s, i) => s + i.quantity, 0),
 }))

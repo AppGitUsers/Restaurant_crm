@@ -46,9 +46,10 @@ class Order(models.Model):
         super().save(*args, **kwargs)
 
     def recalculate_totals(self):
-        self.subtotal   = sum(item.line_total for item in self.items.all())
-        self.tax_amount = (self.subtotal - self.discount) * (self.tax_percent / 100)
-        self.total_amount = self.subtotal - self.discount + self.tax_amount
+        self.subtotal     = sum(item.line_total for item in self.items.all())
+        taxable           = max(0, self.subtotal - self.discount)
+        self.tax_amount   = taxable * (self.tax_percent / 100)
+        self.total_amount = taxable + self.tax_amount
         self.save(update_fields=['subtotal', 'tax_amount', 'total_amount'])
 
     def __str__(self):
