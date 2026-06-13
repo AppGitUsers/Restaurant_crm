@@ -1,6 +1,16 @@
-from django.db import models
+import datetime
+from django.db import models, transaction as db_transaction
 from apps.menu.models import FoodItem
 from apps.accounts.models import CustomUser
+
+
+class OrderCounter(models.Model):
+    """One row per calendar day — atomically tracks how many orders exist that day."""
+    date  = models.DateField(unique=True)
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = []
 
 
 class Order(models.Model):
@@ -38,11 +48,15 @@ class Order(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.order_number:
-            import datetime
             today   = datetime.date.today()
             prefix  = f"ORD{today.strftime('%Y%m%d')}"
-            last    = Order.objects.filter(order_number__startswith=prefix).count()
-            self.order_number = f"{prefix}{str(last + 1).zfill(4)}"
+            with db_transaction.atomic():
+                counter, _ = OrderCounter.objects.select_for_update().get_or_create(
+                    date=today, defaults={'count': 0}
+                )
+                counter.count += 1
+                counter.save(update_fields=['count'])
+                self.order_number = f"{prefix}{str(counter.count).zfill(4)}"
         super().save(*args, **kwargs)
 
     def recalculate_totals(self):
