@@ -681,6 +681,7 @@ function PaymentsTab() {
     else setMonth(m => m + 1)
   }
 
+  const isCurrentMonth = year === today.getFullYear() && month === today.getMonth() + 1
   const monthLabel  = format(new Date(year, month - 1, 1), 'MMMM yyyy')
   const periodStart = `${year}-${String(month).padStart(2, '0')}-01`
   const periodEnd   = `${year}-${String(month).padStart(2, '0')}-${String(getDaysInMonth(new Date(year, month - 1, 1))).padStart(2, '0')}`
@@ -815,6 +816,8 @@ function PaymentsTab() {
                     <span className="badge-green inline-flex items-center gap-1 text-xs px-3 py-1.5">
                       <Check size={12} /> Paid
                     </span>
+                  ) : isCurrentMonth ? (
+                    <span className="text-xs text-gray-400 italic">Month in progress</span>
                   ) : (
                     <button
                       onClick={() => setConfirmEmp(emp)}
@@ -862,7 +865,7 @@ function PaymentsTab() {
               <div><p className="text-xs text-gray-400">Full Salary</p><p className="text-gray-500">₹{emp.full_salary.toLocaleString()}</p></div>
               <div><p className="text-xs text-gray-400">Due Salary</p><p className="font-bold text-primary-600">₹{emp.calculated_salary.toLocaleString()}</p></div>
             </div>
-            {!emp.paid_this_month && (
+            {!emp.paid_this_month && !isCurrentMonth && (
               <button
                 onClick={() => setConfirmEmp(emp)}
                 disabled={emp.calculated_salary <= 0}
@@ -871,6 +874,9 @@ function PaymentsTab() {
                 <CreditCard size={14} />
                 Pay ₹{emp.calculated_salary.toLocaleString()}
               </button>
+            )}
+            {!emp.paid_this_month && isCurrentMonth && (
+              <p className="text-xs text-center text-gray-400 italic py-1">Month in progress — pay after month ends</p>
             )}
           </div>
         ))}
