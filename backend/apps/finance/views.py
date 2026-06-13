@@ -47,6 +47,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             category    = expense.category,
             description = expense.title,
             reference   = f"expense:{expense.id}",
+            tx_date     = expense.expense_date,
         )
 
 

@@ -1,3 +1,4 @@
+import datetime
 from django.db import models
 
 
@@ -21,7 +22,7 @@ class Transaction(models.Model):
     category    = models.CharField(max_length=30, choices=Category.choices, default=Category.MISC)
     description = models.TextField(blank=True)
     reference   = models.CharField(max_length=200, blank=True)
-    tx_date     = models.DateField(auto_now_add=True)
+    tx_date     = models.DateField(default=datetime.date.today)
     created_at  = models.DateTimeField(auto_now_add=True)
 
     class Meta:

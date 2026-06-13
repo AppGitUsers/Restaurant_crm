@@ -27,6 +27,7 @@ def handle_invoice_payment(sender, instance, created, **kwargs):
             category    = 'VENDOR_PAYMENT',
             description = f"Vendor payment: {invoice.invoice_number} — {invoice.vendor.name}",
             reference   = f"invoice:{invoice.id}",
+            tx_date     = instance.payment_date,
         )
     except Exception:
         pass
