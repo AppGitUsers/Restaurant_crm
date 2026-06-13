@@ -14,11 +14,16 @@ function FoodCard({ item, onAdd }) {
   const cartQty   = useCartStore(s =>
     s.items.filter(i => !i.is_custom && i.food_item?.id === item.id).reduce((t, i) => t + i.quantity, 0)
   )
-  // Also count this item when it appears as a component inside custom cart orders
+  // Count this item when used as a component in custom fusion orders OR pre-defined combos
   const customQty = useCartStore(s =>
-    s.items.filter(i => i.is_custom).reduce((t, ci) => {
-      const used = (ci.components || []).filter(c => c.id === item.id).length
-      return t + used * ci.quantity
+    s.items.reduce((t, ci) => {
+      if (ci.is_custom) {
+        return t + (ci.components || []).filter(c => c.id === item.id).length * ci.quantity
+      }
+      if (ci.food_item?.is_combo) {
+        return t + (ci.food_item.combo_components || []).filter(cc => cc.component === item.id).length * ci.quantity
+      }
+      return t
     }, 0)
   )
   const totalInCart = cartQty + customQty
@@ -125,9 +130,13 @@ function CustomizeModal({ onClose, onAdd }) {
 
   // How many of a food item are already reserved in the cart (regular + as components)
   const cartUsed = (itemId) => cartItems.reduce((t, ci) => {
-    if (!ci.is_custom) return ci.food_item?.id === itemId ? t + ci.quantity : t
-    const used = (ci.components || []).filter(c => c.id === itemId).length
-    return t + used * ci.quantity
+    if (ci.is_custom) {
+      return t + (ci.components || []).filter(c => c.id === itemId).length * ci.quantity
+    }
+    if (ci.food_item?.is_combo) {
+      return t + (ci.food_item.combo_components || []).filter(cc => cc.component === itemId).length * ci.quantity
+    }
+    return ci.food_item?.id === itemId ? t + ci.quantity : t
   }, 0)
 
   const { data: customTypes = [] } = useQuery({
