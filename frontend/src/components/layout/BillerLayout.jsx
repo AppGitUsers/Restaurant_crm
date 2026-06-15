@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, NavLink } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, UtensilsCrossed, Clock } from 'lucide-react'
+import { LogOut, UtensilsCrossed, Clock, LayoutGrid, Receipt } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { authAPI } from '@/api'
 import { ConfirmDialog } from '@/components/ui'
+import clsx from 'clsx'
 
 export default function BillerLayout() {
   const { user, refreshToken, logout } = useAuthStore()
@@ -55,6 +56,33 @@ export default function BillerLayout() {
           </button>
         </div>
       </header>
+
+      {/* Tab nav */}
+      <nav className="bg-white border-b border-gray-200 px-4 flex gap-1 flex-shrink-0">
+        <NavLink
+          to="/billing"
+          end
+          className={({ isActive }) => clsx(
+            'flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors',
+            isActive
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          )}
+        >
+          <Receipt size={15} /> Quick Bill
+        </NavLink>
+        <NavLink
+          to="/billing/tables"
+          className={({ isActive }) => clsx(
+            'flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors',
+            isActive
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          )}
+        >
+          <LayoutGrid size={15} /> Tables
+        </NavLink>
+      </nav>
 
       <main className="flex-1 overflow-hidden">
         <Outlet />

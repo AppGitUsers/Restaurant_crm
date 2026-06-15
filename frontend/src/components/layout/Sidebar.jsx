@@ -1,15 +1,16 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, UtensilsCrossed, Package, Receipt,
-  TrendingUp, Users, UserCog, ChevronRight, Settings, X
+  TrendingUp, Users, UserCog, ChevronRight, Settings, X, TableProperties,
 } from 'lucide-react'
 import clsx from 'clsx'
 
 const NAV = [
-  { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard'  },
-  { to: '/menu',          icon: UtensilsCrossed, label: 'Menu'        },
+  { to: '/dashboard',     icon: LayoutDashboard,  label: 'Dashboard'  },
+  { to: '/menu',          icon: UtensilsCrossed,  label: 'Menu'        },
   { to: '/inventory',     icon: Package,          label: 'Inventory'  },
   { to: '/billing-admin', icon: Receipt,          label: 'Billing'    },
+  { to: '/tables-admin',  icon: TableProperties,  label: 'Tables'     },
   { to: '/finance',       icon: TrendingUp,       label: 'Finance'    },
   { to: '/staff',         icon: UserCog,          label: 'Staff'      },
   { to: '/customers',     icon: Users,            label: 'Customers'  },

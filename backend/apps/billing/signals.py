@@ -9,69 +9,71 @@ def handle_order_paid(sender, instance, **kwargs):
     if instance.status != 'PAID':
         return
 
-    # Check if already processed via StockTransaction reference
     from apps.inventory.models import Stock, StockTransaction
-    already = StockTransaction.objects.filter(reference=f"order:{instance.order_number}").exists()
-    if already:
-        return
 
-    # Deduct stock for each order item
-    for order_item in instance.items.select_related('food_item').prefetch_related(
-        'food_item__combo_components__component__recipe_ingredients__ingredient',
-        'food_item__recipe_ingredients__ingredient',
-    ).all():
-        if not order_item.food_item:
-            continue
+    # Stock deduction — two reasons to skip:
+    # 1. Table orders: stock was already deducted at QR submission time (Phase 2)
+    # 2. Re-saves: prevent double deduction on unrelated Order saves
+    is_table_order   = bool(instance.table_session_id)
+    already_deducted = StockTransaction.objects.filter(
+        reference=f"order:{instance.order_number}"
+    ).exists()
 
-        food_item = order_item.food_item
+    if not is_table_order and not already_deducted:
+        for order_item in instance.items.select_related('food_item').prefetch_related(
+            'food_item__combo_components__component__recipe_ingredients__ingredient',
+            'food_item__recipe_ingredients__ingredient',
+        ).all():
+            if not order_item.food_item:
+                continue
 
-        if food_item.is_combo:
-            # Deduct each component's recipe ingredients
-            for cc in food_item.combo_components.all():
-                component = cc.component
-                if not component.tracks_stock:
-                    continue
-                for ri in component.recipe_ingredients.select_related('ingredient').all():
-                    stock, _ = Stock.objects.get_or_create(ingredient=ri.ingredient)
-                    deduct = ri.quantity_required * order_item.quantity
-                    stock.current_quantity = max(0, stock.current_quantity - deduct)
-                    stock.save(update_fields=['current_quantity'])
-                    StockTransaction.objects.create(
-                        ingredient = ri.ingredient,
-                        tx_type    = 'OUT',
-                        quantity   = deduct,
-                        reference  = f"order:{instance.order_number}",
-                        note       = f"Sold: {food_item.name} × {order_item.quantity} (via {component.name})",
-                    )
-            continue
+            food_item = order_item.food_item
 
-        if not food_item.tracks_stock:
-            continue
+            if food_item.is_combo:
+                for cc in food_item.combo_components.all():
+                    component = cc.component
+                    if not component.tracks_stock:
+                        continue
+                    for ri in component.recipe_ingredients.select_related('ingredient').all():
+                        stock, _ = Stock.objects.get_or_create(ingredient=ri.ingredient)
+                        deduct = ri.quantity_required * order_item.quantity
+                        stock.current_quantity = max(0, stock.current_quantity - deduct)
+                        stock.save(update_fields=['current_quantity'])
+                        StockTransaction.objects.create(
+                            ingredient=ri.ingredient,
+                            tx_type='OUT',
+                            quantity=deduct,
+                            reference=f"order:{instance.order_number}",
+                            note=f"Sold: {food_item.name} × {order_item.quantity} (via {component.name})",
+                        )
+                continue
 
-        for ri in food_item.recipe_ingredients.select_related('ingredient').all():
-            stock, _ = Stock.objects.get_or_create(ingredient=ri.ingredient)
-            deduct = ri.quantity_required * order_item.quantity
-            stock.current_quantity = max(0, stock.current_quantity - deduct)
-            stock.save(update_fields=['current_quantity'])
-            StockTransaction.objects.create(
-                ingredient = ri.ingredient,
-                tx_type    = 'OUT',
-                quantity   = deduct,
-                reference  = f"order:{instance.order_number}",
-                note       = f"Sold: {food_item.name} × {order_item.quantity}",
-            )
+            if not food_item.tracks_stock:
+                continue
 
-    # Two-pass recalc: components first, then combos (combos read component counts)
-    try:
-        from apps.menu.models import FoodItem
-        for food in FoodItem.objects.filter(is_active=True, is_combo=False):
-            food.update_makeable_count()
-        for food in FoodItem.objects.filter(is_active=True, is_combo=True):
-            food.update_makeable_count()
-    except Exception:
-        pass
+            for ri in food_item.recipe_ingredients.select_related('ingredient').all():
+                stock, _ = Stock.objects.get_or_create(ingredient=ri.ingredient)
+                deduct = ri.quantity_required * order_item.quantity
+                stock.current_quantity = max(0, stock.current_quantity - deduct)
+                stock.save(update_fields=['current_quantity'])
+                StockTransaction.objects.create(
+                    ingredient=ri.ingredient,
+                    tx_type='OUT',
+                    quantity=deduct,
+                    reference=f"order:{instance.order_number}",
+                    note=f"Sold: {food_item.name} × {order_item.quantity}",
+                )
 
-    # Record income in finance
+        try:
+            from apps.menu.models import FoodItem
+            for food in FoodItem.objects.filter(is_active=True, is_combo=False):
+                food.update_makeable_count()
+            for food in FoodItem.objects.filter(is_active=True, is_combo=True):
+                food.update_makeable_count()
+        except Exception:
+            pass
+
+    # Finance income — always runs, idempotent via get_or_create
     try:
         from apps.finance.models import Transaction
         Transaction.objects.get_or_create(
@@ -87,7 +89,7 @@ def handle_order_paid(sender, instance, **kwargs):
     except Exception:
         pass
 
-    # Link/create customer visit; always sync name from the order
+    # Customer visit — always runs, idempotent via get_or_create
     try:
         if instance.customer_phone:
             from apps.customers.models import Customer, Visit

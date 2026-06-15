@@ -15,4 +15,5 @@ urlpatterns = [
     path('api/dashboard/',      include('apps.dashboard.urls')),
     path('api/settings/',       include('apps.settings_app.urls')),
     path('api/notifications/',  include('apps.notifications.urls')),
+    path('api/',                include('apps.tables.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

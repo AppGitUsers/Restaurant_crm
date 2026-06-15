@@ -36,6 +36,7 @@ LOCAL_APPS = [
     'apps.dashboard',
     'apps.settings_app',
     'apps.notifications',
+    'apps.tables',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -119,6 +120,12 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    'DEFAULT_THROTTLE_RATES': {
+        'public_menu':  '60/min',   # menu browsing — relaxed
+        'public_order': '20/min',   # order submission — tighter
+    },
+    # 1 reverse proxy (nginx) in front of gunicorn — use real client IP for throttling
+    'NUM_PROXIES': 1,
 }
 
 SIMPLE_JWT = {

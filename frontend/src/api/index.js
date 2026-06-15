@@ -1,4 +1,5 @@
 import client from './client'
+import publicClient from './publicClient'
 
 // ── Auth ───────────────────────────────────────────────
 export const authAPI = {
@@ -171,4 +172,34 @@ export const settingsAPI = {
 export const notificationsAPI = {
   list:  (params) => client.get('/notifications/', { params }),
   stats: ()       => client.get('/notifications/stats/'),
+}
+
+// ── Tables / Kitchen / QR ─────────────────────────────
+export const tablesAPI = {
+  // Admin — table management
+  admin: {
+    list:   ()              => client.get('/admin/tables/'),
+    create: (data)          => client.post('/admin/tables/', data),
+    update: (id, data)      => client.patch(`/admin/tables/${id}/`, data),
+    delete: (id)            => client.delete(`/admin/tables/${id}/`),
+  },
+
+  // Biller
+  list:          ()              => client.get('/tables/'),
+  sessionDetail: (id)            => client.get(`/tables/sessions/${id}/`),
+  addBatch:      (id, data)      => client.post(`/tables/sessions/${id}/add_batch/`, data),
+  bill:          (id, data)      => client.post(`/tables/sessions/${id}/bill/`, data),
+
+  // Kitchen
+  kitchen: {
+    batches:       ()          => client.get('/kitchen/batches/'),
+    servedBatches: ()          => client.get('/kitchen/batches/?served=true'),
+    updateStatus:  (id, status) => client.patch(`/kitchen/batches/${id}/`, { status }),
+  },
+
+  // Public (no auth) — uses publicClient so no token is attached
+  public: {
+    menu:  (token)       => publicClient.get(`/public/table/${token}/menu/`),
+    order: (token, data) => publicClient.post(`/public/table/${token}/order/`, data),
+  },
 }
