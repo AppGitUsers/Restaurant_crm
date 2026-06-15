@@ -22,7 +22,9 @@ function AddItemsModal({ open, onClose, sessionId }) {
   const { data: menuData = [], isLoading } = useQuery({
     queryKey: ['menu-items-for-add'],
     queryFn:  () => menuAPI.items.list({ is_active: true }).then(r => r.data.results ?? r.data),
-    enabled:  open,
+    enabled:         open,
+    refetchInterval: open ? 15_000 : false,
+    staleTime:       0,
   })
 
   const submit = useMutation({
@@ -292,7 +294,7 @@ export default function TableBillPage() {
   const { data: session, isLoading } = useQuery({
     queryKey: ['table-session', sessionId],
     queryFn:  () => tablesAPI.sessionDetail(sessionId).then(r => r.data),
-    refetchInterval: 20_000,
+    refetchInterval: 15_000,
   })
 
   const billMutation = useMutation({

@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { tablesAPI } from '@/api'
+import toast from 'react-hot-toast'
 import {
   ShoppingCart, Plus, Minus, ChevronRight, Loader2,
   CheckCircle2, AlertTriangle, UtensilsCrossed, X,
-  Sparkles, Check, Wand2, ClipboardList, Clock, ChefHat,
+  Sparkles, Check, Wand2, ClipboardList, Clock, ChefHat, Bell,
 } from 'lucide-react'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -45,23 +46,60 @@ function remainingCount(item, cart) {
   return item.makeable_count - cartUsed(cart, item.id)
 }
 
-// ─── Fetch hook ───────────────────────────────────────────────────────────────
+// ─── Fetch hook (polls every 15s for live menu counts + order status) ─────────
 
 function usePublicMenu(token) {
   const [data,    setData]    = useState(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(null)
 
-  const refetch = () => {
-    setLoading(true)
+  const poll = useCallback(() => {
     tablesAPI.public.menu(token)
       .then(r  => { setData(r.data); setError(null) })
       .catch(() => setError('Table not found or QR code is invalid.'))
       .finally(() => setLoading(false))
+  }, [token])
+
+  useEffect(() => {
+    setLoading(true)
+    poll()
+    const id = setInterval(poll, 15_000)
+    return () => clearInterval(id)
+  }, [poll])
+
+  return { data, loading, error, refetch: poll }
+}
+
+// ─── Order status banner ───────────────────────────────────────────────────────
+
+function OrderStatusBanner({ orders }) {
+  if (!orders || orders.length === 0) return null
+
+  const allServed    = orders.every(b => b.status === 'SERVED')
+  const anyServed    = orders.some(b  => b.status === 'SERVED')
+  const anyPreparing = orders.some(b  => b.status === 'PREPARING')
+
+  let bg, icon, message
+  if (allServed) {
+    bg = 'bg-green-500'; icon = '🎉'
+    message = 'Your order is ready! Please collect at the counter.'
+  } else if (anyServed) {
+    bg = 'bg-green-500'; icon = '🍽️'
+    message = 'Some items are ready — more still being prepared.'
+  } else if (anyPreparing) {
+    bg = 'bg-blue-500'; icon = '👨‍🍳'
+    message = 'Kitchen is preparing your order…'
+  } else {
+    bg = 'bg-amber-500'; icon = '⏳'
+    message = 'Order received — kitchen will start soon.'
   }
 
-  useEffect(() => { refetch() }, [token])  // eslint-disable-line
-  return { data, loading, error, refetch }
+  return (
+    <div className={`mx-4 mt-3 rounded-xl px-4 py-3 flex items-center gap-3 ${bg} ${allServed || anyServed ? 'animate-pulse' : ''}`}>
+      <Bell size={16} className="text-white flex-shrink-0" />
+      <p className="text-white text-sm font-semibold flex-1">{icon} {message}</p>
+    </div>
+  )
 }
 
 // ─── Addon picker modal ───────────────────────────────────────────────────────
@@ -698,9 +736,24 @@ export default function QROrderPage() {
   const [showCustomize, setCustomize]   = useState(false)
   const [addonPrompt,  setAddonPrompt]  = useState(null)  // item to show addon prompt after adding
 
-  const categoryRefs  = useRef({})
-  const categories    = data?.categories || []
-  const gstRate       = parseFloat(data?.gst_rate || 5) / 100
+  const categoryRefs   = useRef({})
+  const notifiedServed = useRef(new Set())      // batch IDs already toasted as SERVED
+  const categories     = data?.categories || []
+  const gstRate        = parseFloat(data?.gst_rate || 5) / 100
+
+  // ── Notify customer when a batch is marked SERVED ────────────────────────────
+  useEffect(() => {
+    const orders = data?.session_orders || []
+    orders.forEach(batch => {
+      if (batch.status === 'SERVED' && !notifiedServed.current.has(batch.id)) {
+        notifiedServed.current.add(batch.id)
+        toast.success('Your order is ready! 🍽️ Please collect at the counter.', {
+          duration: 8000,
+          style: { background: '#16a34a', color: '#fff', fontWeight: 600 },
+        })
+      }
+    })
+  }, [data?.session_orders])
 
   // ── Cart helpers ─────────────────────────────────���──────────────────────────
 
@@ -878,6 +931,9 @@ export default function QROrderPage() {
           </div>
         </div>
       </div>
+
+      {/* Order status banner (live, polls every 15s) */}
+      <OrderStatusBanner orders={data?.session_orders} />
 
       {/* Stock error banner */}
       {stockErrors.length > 0 && (
