@@ -18,6 +18,11 @@ class CustomUser(AbstractUser):
         related_name='user_account',
     )
 
+    def save(self, *args, **kwargs):
+        if self.is_superuser:
+            self.role = self.Role.ADMIN
+        super().save(*args, **kwargs)
+
     def is_admin_user(self):
         return self.role == self.Role.ADMIN
 
