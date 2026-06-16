@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { tablesAPI } from '@/api'
+import { parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
 import {
   ShoppingCart, Plus, Minus, ChevronRight, Loader2,
@@ -351,21 +352,71 @@ function CustomizeModal({ customizableTypes, cart, onClose, onAdd }) {
   )
 }
 
-// ─── My Orders (read-only session history) ────────────────────────────────────
+// ─── My Orders with cancel window ─────────────────────────────────────────────
 
 const STATUS_META = {
-  PENDING:   { label: 'Pending',   icon: Clock,       color: 'text-amber-500',  bg: 'bg-amber-50',  border: 'border-amber-200' },
-  PREPARING: { label: 'Preparing', icon: ChefHat,     color: 'text-blue-500',   bg: 'bg-blue-50',   border: 'border-blue-200' },
-  SERVED:    { label: 'Served',    icon: CheckCircle2, color: 'text-green-500',  bg: 'bg-green-50',  border: 'border-green-200' },
+  PENDING:   { label: 'Pending',   icon: Clock,        color: 'text-amber-500', bg: 'bg-amber-50',  border: 'border-amber-200' },
+  PREPARING: { label: 'Preparing', icon: ChefHat,      color: 'text-blue-500',  bg: 'bg-blue-50',   border: 'border-blue-200' },
+  SERVED:    { label: 'Served',    icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-50',  border: 'border-green-200' },
 }
 
-function MyOrders({ orders, gstRate }) {
+const CANCEL_WINDOW_SEC = 120  // 2 minutes
+
+function CancelButton({ batch, token, onCancelled }) {
+  const start   = parseISO(batch.placed_at).getTime()
+  const [secs, setSecs] = useState(() => Math.floor((Date.now() - start) / 1000))
+  const [busy,  setBusy] = useState(false)
+
+  useEffect(() => {
+    const id = setInterval(() => setSecs(Math.floor((Date.now() - start) / 1000)), 1000)
+    return () => clearInterval(id)
+  }, [start])
+
+  const remaining = CANCEL_WINDOW_SEC - secs
+  if (remaining <= 0 || batch.status !== 'PENDING') return null
+
+  const mm = String(Math.floor(remaining / 60)).padStart(2, '0')
+  const ss = String(remaining % 60).padStart(2, '0')
+
+  const handleCancel = async () => {
+    setBusy(true)
+    try {
+      await tablesAPI.public.cancelBatch(token, batch.id)
+      toast.success('Order cancelled — stock restored.')
+      onCancelled()
+    } catch (err) {
+      const msg = err?.response?.data?.error
+      toast.error(msg || 'Could not cancel. Please ask staff.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleCancel}
+      disabled={busy}
+      className="flex items-center gap-1 text-xs text-red-500 border border-red-200
+                 rounded-lg px-2.5 py-1 hover:bg-red-50 disabled:opacity-50 transition-colors"
+    >
+      {busy
+        ? <Loader2 size={11} className="animate-spin" />
+        : <X size={11} />}
+      {busy ? 'Cancelling…' : `Cancel  ${mm}:${ss}`}
+    </button>
+  )
+}
+
+function MyOrders({ orders, gstRate, token, onRefresh }) {
   if (!orders || orders.length === 0) return null
 
   const grandSubtotal = orders.reduce((sum, batch) =>
     sum + batch.items.reduce((s, it) => s + it.quantity * (it.unit_price + it.addon_unit_price), 0), 0)
   const grandTax   = grandSubtotal * gstRate
   const grandTotal = grandSubtotal + grandTax
+  const gstPct     = (gstRate * 100 % 1 === 0)
+    ? (gstRate * 100).toFixed(0)
+    : (gstRate * 100).toFixed(1)
 
   return (
     <div className="px-4 mt-6 mb-2">
@@ -376,15 +427,21 @@ function MyOrders({ orders, gstRate }) {
 
       <div className="space-y-3">
         {orders.map((batch, idx) => {
-          const meta      = STATUS_META[batch.status] || STATUS_META.PENDING
-          const Icon      = meta.icon
-          const subtotal  = batch.items.reduce((s, it) => s + it.quantity * (it.unit_price + it.addon_unit_price), 0)
+          const meta     = STATUS_META[batch.status] || STATUS_META.PENDING
+          const Icon     = meta.icon
+          const subtotal = batch.items.reduce((s, it) => s + it.quantity * (it.unit_price + it.addon_unit_price), 0)
 
           return (
             <div key={batch.id} className={`rounded-2xl border ${meta.border} ${meta.bg} overflow-hidden`}>
+
               {/* Batch header */}
               <div className={`flex items-center justify-between px-4 py-2.5 border-b ${meta.border}`}>
-                <span className="text-sm font-semibold text-gray-700">Order {idx + 1}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-700">Order {idx + 1}</span>
+                  {batch.status === 'PENDING' && (
+                    <CancelButton batch={batch} token={token} onCancelled={onRefresh} />
+                  )}
+                </div>
                 <span className={`flex items-center gap-1.5 text-xs font-semibold ${meta.color}`}>
                   <Icon size={13} />{meta.label}
                 </span>
@@ -407,9 +464,6 @@ function MyOrders({ orders, gstRate }) {
                             {rupees(it.unit_price)} + {rupees(it.addon_unit_price)} add-ons
                           </p>
                         )}
-                        {it.notes ? (
-                          <p className="text-xs text-gray-400 truncate mt-0.5">{it.notes}</p>
-                        ) : null}
                       </div>
                       <span className="text-sm font-semibold text-gray-700 flex-shrink-0">{rupees(lineTotal)}</span>
                     </div>
@@ -427,13 +481,13 @@ function MyOrders({ orders, gstRate }) {
         })}
       </div>
 
-      {/* Grand total */}
+      {/* Running total */}
       <div className="mt-3 bg-gray-800 rounded-2xl px-4 py-3 space-y-1.5">
         <div className="flex justify-between text-sm text-gray-300">
           <span>Subtotal</span><span>{rupees(grandSubtotal)}</span>
         </div>
         <div className="flex justify-between text-xs text-gray-400">
-          <span>Tax ({(gstRate * 100).toFixed(0)}%)</span><span>≈ {rupees(grandTax)}</span>
+          <span>GST ({gstPct}%)</span><span>≈ {rupees(grandTax)}</span>
         </div>
         <div className="flex justify-between text-base font-bold text-white border-t border-gray-600 pt-1.5">
           <span>Running Total</span><span>{rupees(grandTotal)}</span>
@@ -696,7 +750,7 @@ function CartSheet({ cart, setCart, onClose, onPlace, placing, gstRate }) {
             <div className="space-y-1 text-sm">
               <div className="flex justify-between text-gray-600"><span>Subtotal</span><span>{rupees(subtotal)}</span></div>
               <div className="flex justify-between text-gray-400 text-xs">
-                <span>Tax ({(gstRate * 100).toFixed(0)}%) added at billing</span>
+                <span>GST ({gstRate * 100 % 1 === 0 ? (gstRate*100).toFixed(0) : (gstRate*100).toFixed(1)}%) added at billing</span>
                 <span>≈ {rupees(tax)}</span>
               </div>
             </div>
@@ -746,7 +800,7 @@ export default function QROrderPage() {
   const categoryRefs   = useRef({})
   const notifiedServed = useRef(new Set())      // batch IDs already toasted as SERVED
   const categories     = data?.categories || []
-  const gstRate        = parseFloat(data?.gst_rate || 5) / 100
+  const gstRate        = parseFloat(data?.gst_rate ?? 5) / 100
   // Read-only if another device already claimed this session
   const isReadOnly     = !!(data?.session_claimed && !getKey(token))
 
@@ -1021,8 +1075,13 @@ export default function QROrderPage() {
         ))}
       </div>
 
-      {/* Session order history */}
-      <MyOrders orders={data.session_orders} gstRate={gstRate} />
+      {/* Session order history with cancel window */}
+      <MyOrders
+        orders={data.session_orders}
+        gstRate={gstRate}
+        token={token}
+        onRefresh={refetch}
+      />
 
       {/* Floating cart bar — hidden in read-only mode */}
       {cartCount > 0 && !isReadOnly && (

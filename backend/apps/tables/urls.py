@@ -4,7 +4,8 @@ from . import views
 urlpatterns = [
     # Public — no auth, customer QR endpoints
     path('public/table/<uuid:qr_token>/menu/',  views.PublicMenuView.as_view(),        name='public-menu'),
-    path('public/table/<uuid:qr_token>/order/', views.PublicOrderSubmitView.as_view(), name='public-order'),
+    path('public/table/<uuid:qr_token>/order/',                        views.PublicOrderSubmitView.as_view(),  name='public-order'),
+    path('public/table/<uuid:qr_token>/orders/<int:batch_id>/cancel/', views.PublicBatchCancelView.as_view(), name='public-order-cancel'),
 
     # Kitchen — authenticated (ADMIN + BILLER + KITCHEN)
     path('kitchen/batches/',                   views.KitchenBatchListView.as_view(),   name='kitchen-batch-list'),

@@ -200,7 +200,8 @@ export const tablesAPI = {
 
   // Public (no auth) — uses publicClient so no token is attached
   public: {
-    menu:  (token)       => publicClient.get(`/public/table/${token}/menu/`),
-    order: (token, data) => publicClient.post(`/public/table/${token}/order/`, data),
+    menu:         (token)            => publicClient.get(`/public/table/${token}/menu/`),
+    order:        (token, data)      => publicClient.post(`/public/table/${token}/order/`, data),
+    cancelBatch:  (token, batchId)   => publicClient.post(`/public/table/${token}/orders/${batchId}/cancel/`),
   },
 }

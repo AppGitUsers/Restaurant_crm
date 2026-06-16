@@ -391,6 +391,88 @@ class PublicOrderSubmitView(APIView):
         }, status=status.HTTP_201_CREATED)
 
 
+class PublicBatchCancelView(APIView):
+    """
+    Customer cancels a PENDING batch within the 2-minute cancel window.
+
+    Race condition safety:
+      SELECT FOR UPDATE on the batch row means only one of (cancel, kitchen PREPARING)
+      can hold the row lock at a time.
+      - Cancel wins → batch deleted, kitchen UPDATE finds 0 rows (no-op)
+      - Kitchen wins → batch is PREPARING when cancel reads it → 409 returned to customer
+    """
+    permission_classes = [AllowAny]
+    throttle_classes   = [OrderThrottle]
+
+    def post(self, request, qr_token, batch_id):
+        table   = get_object_or_404(Table, qr_token=qr_token, is_active=True)
+        session = table.get_active_session()
+        if not session:
+            return Response({'error': 'No active session.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            try:
+                batch = (TableOrderBatch.objects
+                         .select_for_update()
+                         .get(pk=batch_id, session=session))
+            except TableOrderBatch.DoesNotExist:
+                return Response({'error': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+            if batch.status != TableOrderBatch.Status.PENDING:
+                return Response(
+                    {'error': 'This order is already being prepared and cannot be cancelled.'},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            # ── Reverse every OUT stock transaction created for this batch ──
+            from apps.inventory.models import Stock, StockTransaction
+
+            out_txs = list(
+                StockTransaction.objects
+                .filter(reference=f"table_batch:{batch.id}", tx_type='OUT')
+                .select_related('ingredient')
+            )
+
+            if out_txs:
+                ingredient_ids = sorted({tx.ingredient_id for tx in out_txs})
+                locked_stocks  = {
+                    s.ingredient_id: s
+                    for s in Stock.objects
+                    .select_for_update()
+                    .filter(ingredient_id__in=ingredient_ids)
+                }
+                for tx in out_txs:
+                    stock = locked_stocks.get(tx.ingredient_id)
+                    if stock:
+                        stock.current_quantity += tx.quantity
+                        stock.save(update_fields=['current_quantity'])
+
+                StockTransaction.objects.bulk_create([
+                    StockTransaction(
+                        ingredient=tx.ingredient,
+                        tx_type='IN',
+                        quantity=tx.quantity,
+                        reference=f"cancel_batch:{batch.id}",
+                        note=f"Cancelled order — reversed: {tx.note}",
+                    )
+                    for tx in out_txs
+                ])
+
+            batch.delete()
+
+        # Recalculate makeable counts outside the lock
+        try:
+            from apps.menu.models import FoodItem as FI
+            for food in FI.objects.filter(is_active=True, is_combo=False):
+                food.update_makeable_count()
+            for food in FI.objects.filter(is_active=True, is_combo=True):
+                food.update_makeable_count()
+        except Exception:
+            pass
+
+        return Response({'message': 'Order cancelled.'})
+
+
 class _StockError(Exception):
     """Sentinel used to trigger atomic rollback on stock validation failure."""
 
