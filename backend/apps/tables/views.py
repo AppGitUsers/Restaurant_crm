@@ -777,6 +777,13 @@ class TableSessionBillView(APIView):
             session.closed_at = timezone.now()
             session.save(update_fields=['discount', 'status', 'closed_at'])
 
+        # WhatsApp bill notification — non-blocking, never breaks the billing flow
+        try:
+            from apps.notifications.utils import send_bill_notification
+            send_bill_notification(order)
+        except Exception:
+            pass
+
         from apps.billing.serializers import OrderSerializer
         return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
 

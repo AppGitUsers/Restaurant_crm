@@ -87,6 +87,20 @@ def _queue(notification_type: str, phone: str, message: str, reference: str = ''
 
 # ── Public send functions ──────────────────────────────────────────────────────
 
+def _format_order_item(item) -> str:
+    name = item.custom_name or (item.food_item.name if item.food_item else 'Item')
+    line = f"  • {name} ×{item.quantity}  ₹{item.line_total}"
+    if item.addon_unit_price and item.addon_unit_price > 0:
+        # Extract add-on names from notes ("Add-ons: X, Y" or "Custom: ...\nAdd-ons: X, Y")
+        addon_desc = next(
+            (l.strip() for l in (item.notes or '').splitlines() if 'Add-ons:' in l),
+            'Add-ons',
+        )
+        addon_total = item.quantity * item.addon_unit_price
+        line += f"\n      ↳ {addon_desc}  (+₹{addon_total})"
+    return line
+
+
 def send_bill_notification(order) -> None:
     if not _is_enabled('bill'):
         return
@@ -95,8 +109,7 @@ def send_bill_notification(order) -> None:
     from apps.settings_app.models import RestaurantSettings
     cfg = RestaurantSettings.get_settings()
     lines = '\n'.join(
-        f"  • {item.custom_name or (item.food_item.name if item.food_item else 'Item')}"
-        f" ×{item.quantity}  ₹{item.line_total}"
+        _format_order_item(item)
         for item in order.items.select_related('food_item').all()
     )
     msg = TEMPLATES['bill'].format(
