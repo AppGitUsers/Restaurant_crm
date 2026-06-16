@@ -86,8 +86,9 @@ class PublicMenuView(APIView):
         except Exception:
             gst_rate = 5.0
 
-        session = table.get_active_session()
-        session_orders = []
+        session         = table.get_active_session()
+        session_claimed = bool(session and session.session_key)
+        session_orders  = []
         if session:
             for batch in (session.batches
                           .prefetch_related('items__food_item')
@@ -112,6 +113,7 @@ class PublicMenuView(APIView):
         return Response({
             'table_number':       table.number,
             'has_active_session': session is not None,
+            'session_claimed':    session_claimed,
             'gst_rate':           gst_rate,
             'categories':         list(grouped.values()),
             'customizable_types': ct_list,
@@ -141,8 +143,9 @@ class PublicOrderSubmitView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        items_data  = serializer.validated_data['items']
-        batch_notes = serializer.validated_data.get('notes', '')
+        items_data    = serializer.validated_data['items']
+        batch_notes   = serializer.validated_data.get('notes', '')
+        provided_key  = serializer.validated_data.get('session_key', '')
 
         stock_errors = []
         batch        = None
@@ -179,6 +182,18 @@ class PublicOrderSubmitView(APIView):
                         session = TableSession.objects.get(
                             table=table, status=TableSession.Status.OPEN
                         )
+
+                # ── Session key: claim or validate ────────────────────────────
+                if session.session_key:
+                    if provided_key != session.session_key:
+                        return Response(
+                            {'error': 'This table session is already claimed by another device.'},
+                            status=status.HTTP_403_FORBIDDEN,
+                        )
+                else:
+                    import secrets
+                    session.session_key = secrets.token_urlsafe(16)
+                    session.save(update_fields=['session_key'])
 
                 # ── Step 2: collect every ingredient ID we'll lock ─────────────
                 ingredient_ids = set()
@@ -369,6 +384,7 @@ class PublicOrderSubmitView(APIView):
         return Response({
             'batch_id':     batch.id,
             'session_id':   session.id,
+            'session_key':  session.session_key,
             'table_number': table.number,
             'items_count':  sum(d['quantity'] for d in items_data),
             'message':      'Order placed. Kitchen has been notified.',
@@ -620,7 +636,10 @@ class TableSessionBillView(APIView):
     permission_classes = [IsAdminOrBiller]
 
     def post(self, request, session_id):
-        session = get_object_or_404(TableSession, pk=session_id, status=TableSession.Status.OPEN)
+        session = get_object_or_404(
+            TableSession, pk=session_id,
+            status__in=[TableSession.Status.OPEN, TableSession.Status.CLOSED],
+        )
 
         payment_method = request.data.get('payment_method', 'CASH')
         discount       = request.data.get('discount', 0)
@@ -678,6 +697,26 @@ class TableSessionBillView(APIView):
 
         from apps.billing.serializers import OrderSerializer
         return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
+
+
+# ── Biller: manually end a session (without billing) ────────────────────────
+
+class TableSessionEndView(APIView):
+    """
+    Biller closes an open session without generating a bill.
+    Sets status → CLOSED and clears session_key so a new party can claim
+    the table. The session data stays intact and can still be billed later.
+    """
+    permission_classes = [IsAdminOrBiller]
+
+    def post(self, request, session_id):
+        session = get_object_or_404(TableSession, pk=session_id, status=TableSession.Status.OPEN)
+        from django.utils import timezone
+        session.status      = TableSession.Status.CLOSED
+        session.session_key = ''
+        session.closed_at   = timezone.now()
+        session.save(update_fields=['status', 'session_key', 'closed_at'])
+        return Response({'status': 'closed', 'session_id': session.id})
 
 
 # ── Admin: Table CRUD ────────────────────────────────────────────────────────

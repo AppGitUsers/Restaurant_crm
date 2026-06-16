@@ -189,6 +189,7 @@ export const tablesAPI = {
   sessionDetail: (id)            => client.get(`/tables/sessions/${id}/`),
   addBatch:      (id, data)      => client.post(`/tables/sessions/${id}/add_batch/`, data),
   bill:          (id, data)      => client.post(`/tables/sessions/${id}/bill/`, data),
+  endSession:    (id)            => client.post(`/tables/sessions/${id}/end/`),
 
   // Kitchen
   kitchen: {

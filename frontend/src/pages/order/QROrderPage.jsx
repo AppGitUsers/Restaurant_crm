@@ -46,6 +46,13 @@ function remainingCount(item, cart) {
   return item.makeable_count - cartUsed(cart, item.id)
 }
 
+// ─── localStorage helpers for session key ─────────────────────────────────────
+
+const lsKey    = (token) => `wls_session_${token}`
+const getKey   = (token) => localStorage.getItem(lsKey(token)) || ''
+const saveKey  = (token, key) => localStorage.setItem(lsKey(token), key)
+const clearKey = (token) => localStorage.removeItem(lsKey(token))
+
 // ─── Fetch hook (polls every 15s for live menu counts + order status) ─────────
 
 function usePublicMenu(token) {
@@ -439,7 +446,7 @@ function MyOrders({ orders, gstRate }) {
 
 // ─── Item row ─────────────────────────────────────────────────────────────────
 
-function ItemRow({ item, cart, onInc, onDec }) {
+function ItemRow({ item, cart, onInc, onDec, readOnly = false }) {
   const used      = cartUsed(cart, item.id)
   const qty       = cart.filter(ci => !ci.is_custom && ci.food_item?.id === item.id)
                        .reduce((s, ci) => s + ci.quantity, 0)
@@ -482,7 +489,7 @@ function ItemRow({ item, cart, onInc, onDec }) {
               <span className="ml-2 text-xs text-orange-500">{remaining} left</span>
             )}
           </div>
-          {(avail || qty > 0) && (
+          {!readOnly && (avail || qty > 0) && (
             qty === 0 ? (
               <button
                 onClick={() => avail && onInc(item)}
@@ -740,6 +747,8 @@ export default function QROrderPage() {
   const notifiedServed = useRef(new Set())      // batch IDs already toasted as SERVED
   const categories     = data?.categories || []
   const gstRate        = parseFloat(data?.gst_rate || 5) / 100
+  // Read-only if another device already claimed this session
+  const isReadOnly     = !!(data?.session_claimed && !getKey(token))
 
   // ── Notify customer when a batch is marked SERVED ────────────────────────────
   useEffect(() => {
@@ -843,7 +852,8 @@ export default function QROrderPage() {
       }
     })
     try {
-      const res = await tablesAPI.public.order(token, { items })
+      const res = await tablesAPI.public.order(token, { items, session_key: getKey(token) })
+      if (res.data.session_key) saveKey(token, res.data.session_key)
       setSuccessInfo(res.data)
       setCart([])
       setCartOpen(false)
@@ -935,6 +945,17 @@ export default function QROrderPage() {
       {/* Order status banner (live, polls every 15s) */}
       <OrderStatusBanner orders={data?.session_orders} />
 
+      {/* Read-only banner — another device already claimed this session */}
+      {isReadOnly && (
+        <div className="mx-4 mt-3 bg-gray-800 border border-gray-600 rounded-xl px-4 py-3 flex items-start gap-3">
+          <AlertTriangle size={16} className="text-amber-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-white text-sm font-semibold">Table already has an active session</p>
+            <p className="text-gray-400 text-xs mt-0.5">You can browse the menu, but ordering is disabled. Please ask staff for assistance.</p>
+          </div>
+        </div>
+      )}
+
       {/* Stock error banner */}
       {stockErrors.length > 0 && (
         <div className="mx-4 mt-3 bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
@@ -990,8 +1011,9 @@ export default function QROrderPage() {
                   key={item.id}
                   item={item}
                   cart={cart}
-                  onInc={incItem}
-                  onDec={decItem}
+                  onInc={isReadOnly ? () => {} : incItem}
+                  onDec={isReadOnly ? () => {} : decItem}
+                  readOnly={isReadOnly}
                 />
               ))}
             </div>
@@ -1002,8 +1024,8 @@ export default function QROrderPage() {
       {/* Session order history */}
       <MyOrders orders={data.session_orders} gstRate={gstRate} />
 
-      {/* Floating cart bar */}
-      {cartCount > 0 && (
+      {/* Floating cart bar — hidden in read-only mode */}
+      {cartCount > 0 && !isReadOnly && (
         <div className="fixed bottom-0 left-0 right-0 p-4 z-40">
           <button
             onClick={() => setCartOpen(true)}

@@ -279,9 +279,10 @@ export default function TableBillPage() {
   const navigate      = useNavigate()
   const qc            = useQueryClient()
 
-  const [discount,  setDiscount]  = useState(0)
-  const [addOpen,   setAddOpen]   = useState(false)
-  const [billOpen,  setBillOpen]  = useState(false)
+  const [discount,        setDiscount]        = useState(0)
+  const [addOpen,         setAddOpen]         = useState(false)
+  const [billOpen,        setBillOpen]        = useState(false)
+  const [endConfirmOpen,  setEndConfirmOpen]  = useState(false)
 
   const { data: settings } = useQuery({
     queryKey: ['restaurant-settings'],
@@ -306,6 +307,17 @@ export default function TableBillPage() {
       navigate('/billing/tables')
     },
     onError: () => toast.error('Billing failed. Please try again.'),
+  })
+
+  const endMutation = useMutation({
+    mutationFn: () => tablesAPI.endSession(sessionId),
+    onSuccess: () => {
+      qc.invalidateQueries(['tables-grid'])
+      qc.invalidateQueries(['table-session', sessionId])
+      toast.success('Session ended — table is free for new customers.')
+      navigate('/billing/tables')
+    },
+    onError: () => toast.error('Failed to end session.'),
   })
 
   if (isLoading) return <PageLoader />
@@ -335,9 +347,18 @@ export default function TableBillPage() {
           </div>
         </div>
         {!isBilled && (
-          <button onClick={() => setAddOpen(true)} className="btn-primary py-1.5 px-3 text-sm">
-            <Plus size={14} /> Add Items
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setEndConfirmOpen(true)}
+              disabled={endMutation.isPending}
+              className="py-1.5 px-3 text-sm rounded-lg border border-red-200 text-red-500 hover:bg-red-50 font-medium flex items-center gap-1"
+            >
+              End Session
+            </button>
+            <button onClick={() => setAddOpen(true)} className="btn-primary py-1.5 px-3 text-sm">
+              <Plus size={14} /> Add Items
+            </button>
+          </div>
         )}
       </div>
 
@@ -437,6 +458,40 @@ export default function TableBillPage() {
         gstRate={gstRate}
         onBill={(data) => { setBillOpen(false); billMutation.mutate(data) }}
       />
+
+      {/* End Session confirmation modal */}
+      <Modal
+        open={endConfirmOpen}
+        onClose={() => setEndConfirmOpen(false)}
+        title="End Session"
+        size="sm"
+        footer={
+          <>
+            <button
+              onClick={() => setEndConfirmOpen(false)}
+              className="btn-ghost"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => { setEndConfirmOpen(false); endMutation.mutate() }}
+              disabled={endMutation.isPending}
+              className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white font-semibold text-sm disabled:opacity-50"
+            >
+              {endMutation.isPending ? 'Ending…' : 'Yes, End Session'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3 py-1">
+          <p className="text-gray-700 text-sm">
+            This will free <span className="font-semibold">Table {session?.table_number}</span> for new customers immediately.
+          </p>
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
+            The session and all its orders will be saved. You can still bill it from the <span className="font-semibold">Pending Bills</span> section on the tables page.
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

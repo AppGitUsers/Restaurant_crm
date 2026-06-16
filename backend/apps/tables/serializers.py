@@ -82,8 +82,9 @@ class OrderItemInputSerializer(serializers.Serializer):
 
 
 class OrderSubmitSerializer(serializers.Serializer):
-    items = OrderItemInputSerializer(many=True, min_length=1, max_length=20)
-    notes = serializers.CharField(max_length=1000, required=False, allow_blank=True, default='')
+    items       = OrderItemInputSerializer(many=True, min_length=1, max_length=20)
+    notes       = serializers.CharField(max_length=1000, required=False, allow_blank=True, default='')
+    session_key = serializers.CharField(max_length=64,   required=False, allow_blank=True, default='')
 
 
 class TableOrderItemSerializer(serializers.ModelSerializer):
@@ -124,11 +125,12 @@ class TableSessionSerializer(serializers.ModelSerializer):
 
 
 class TableSerializer(serializers.ModelSerializer):
-    active_session = serializers.SerializerMethodField()
+    active_session  = serializers.SerializerMethodField()
+    pending_session = serializers.SerializerMethodField()
 
     class Meta:
         model  = Table
-        fields = ['id', 'number', 'qr_token', 'is_active', 'active_session']
+        fields = ['id', 'number', 'qr_token', 'is_active', 'active_session', 'pending_session']
 
     def get_active_session(self, obj):
         session = obj.get_active_session()
@@ -137,6 +139,19 @@ class TableSerializer(serializers.ModelSerializer):
         return {
             'id':         session.id,
             'opened_at':  session.opened_at,
+            'subtotal':   float(session.subtotal),
+            'item_count': session.item_count,
+        }
+
+    def get_pending_session(self, obj):
+        """Most recent CLOSED (manually ended, not yet billed) session for this table."""
+        session = obj.sessions.filter(status=TableSession.Status.CLOSED).order_by('-closed_at').first()
+        if not session:
+            return None
+        return {
+            'id':         session.id,
+            'opened_at':  session.opened_at,
+            'closed_at':  session.closed_at,
             'subtotal':   float(session.subtotal),
             'item_count': session.item_count,
         }
