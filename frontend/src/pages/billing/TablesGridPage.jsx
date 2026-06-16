@@ -17,10 +17,13 @@ export default function TablesGridPage() {
   if (isLoading) return <PageLoader />
 
   const occupied = tables.filter(t => t.active_session).length
-  const empty    = tables.filter(t => !t.active_session && !t.pending_session).length
-  const pending  = tables.filter(t => t.pending_session).length
+  const empty    = tables.filter(t => !t.active_session && !(t.pending_sessions?.length)).length
+  const pending  = tables.reduce((sum, t) => sum + (t.pending_sessions?.length || 0), 0)
 
-  const pendingTables = tables.filter(t => t.pending_session)
+  // Flatten all pending sessions across all tables into individual cards
+  const pendingCards = tables.flatMap(t =>
+    (t.pending_sessions || []).map(s => ({ ...s, table_number: t.number }))
+  )
 
   return (
     <div className="h-full overflow-y-auto p-4 space-y-6">
@@ -54,7 +57,7 @@ export default function TablesGridPage() {
       </div>
 
       {/* Pending Bills — sessions manually ended, not yet billed */}
-      {pendingTables.length > 0 && (
+      {pendingCards.length > 0 && (
         <div>
           <div className="flex items-center gap-2 mb-3">
             <AlertCircle size={15} className="text-orange-500" />
@@ -62,18 +65,17 @@ export default function TablesGridPage() {
             <span className="text-xs text-gray-400">— sessions ended but not yet billed</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {pendingTables.map(table => {
-              const s       = table.pending_session
+            {pendingCards.map(s => {
               const elapsed = formatDistanceToNow(parseISO(s.closed_at), { addSuffix: true })
               return (
                 <div
-                  key={table.id}
+                  key={s.id}
                   onClick={() => navigate(`/billing/tables/${s.id}`)}
                   className="rounded-xl border-2 border-orange-300 bg-orange-50 hover:bg-orange-100
                              p-3 cursor-pointer transition-colors active:scale-[0.98]"
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xl font-extrabold text-orange-700">T{table.number}</span>
+                    <span className="text-xl font-extrabold text-orange-700">T{s.table_number}</span>
                     <span className="text-xs bg-orange-200 text-orange-700 font-semibold px-2 py-0.5 rounded-full">
                       Ended
                     </span>
@@ -101,7 +103,7 @@ export default function TablesGridPage() {
 
       {/* Active table grid */}
       <div>
-        {pendingTables.length > 0 && (
+        {pendingCards.length > 0 && (
           <h3 className="text-sm font-bold text-gray-700 mb-3">Active Tables</h3>
         )}
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">

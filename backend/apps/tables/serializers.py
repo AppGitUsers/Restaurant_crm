@@ -125,12 +125,12 @@ class TableSessionSerializer(serializers.ModelSerializer):
 
 
 class TableSerializer(serializers.ModelSerializer):
-    active_session  = serializers.SerializerMethodField()
-    pending_session = serializers.SerializerMethodField()
+    active_session   = serializers.SerializerMethodField()
+    pending_sessions = serializers.SerializerMethodField()
 
     class Meta:
         model  = Table
-        fields = ['id', 'number', 'qr_token', 'is_active', 'active_session', 'pending_session']
+        fields = ['id', 'number', 'qr_token', 'is_active', 'active_session', 'pending_sessions']
 
     def get_active_session(self, obj):
         session = obj.get_active_session()
@@ -143,15 +143,18 @@ class TableSerializer(serializers.ModelSerializer):
             'item_count': session.item_count,
         }
 
-    def get_pending_session(self, obj):
-        """Most recent CLOSED (manually ended, not yet billed) session for this table."""
-        session = obj.sessions.filter(status=TableSession.Status.CLOSED).order_by('-closed_at').first()
-        if not session:
-            return None
-        return {
-            'id':         session.id,
-            'opened_at':  session.opened_at,
-            'closed_at':  session.closed_at,
-            'subtotal':   float(session.subtotal),
-            'item_count': session.item_count,
-        }
+    def get_pending_sessions(self, obj):
+        """All CLOSED (manually ended, not yet billed) sessions for this table, newest first."""
+        sessions = (obj.sessions
+                    .filter(status=TableSession.Status.CLOSED)
+                    .order_by('-closed_at'))
+        return [
+            {
+                'id':         s.id,
+                'opened_at':  s.opened_at,
+                'closed_at':  s.closed_at,
+                'subtotal':   float(s.subtotal),
+                'item_count': s.item_count,
+            }
+            for s in sessions
+        ]
