@@ -120,9 +120,19 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    # Apply AnonRateThrottle + UserRateThrottle to every view that does not
+    # define its own throttle_classes.  Views that do (public endpoints,
+    # login) override these with their own tighter scopes.
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
     'DEFAULT_THROTTLE_RATES': {
-        'public_menu':  '60/min',   # menu browsing — relaxed
-        'public_order': '20/min',   # order submission — tighter
+        'anon':         '120/min',  # fallback for any anonymous endpoint
+        'user':         '600/min',  # authenticated users (biller / kitchen / admin)
+        'public_menu':  '60/min',   # QR menu browsing
+        'public_order': '10/min',   # order submission — tight to block fake-order spam
+        'login':        '5/min',    # brute-force / credential-stuffing protection
     },
     # 1 reverse proxy (nginx) in front of gunicorn — use real client IP for throttling
     'NUM_PROXIES': 1,
