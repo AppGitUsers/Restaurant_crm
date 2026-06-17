@@ -178,17 +178,21 @@ class PublicOrderSubmitView(APIView):
         try:
             with transaction.atomic():
                 # ── Step 1: get or create session ──────────────────────────────
+                # select_for_update() locks the session row for the duration of
+                # this transaction so that two simultaneous first-orders from the
+                # same table cannot both pass the session_key check at once.
                 try:
-                    session = TableSession.objects.get(
-                        table=table, status=TableSession.Status.OPEN
-                    )
+                    session = (TableSession.objects
+                               .select_for_update()
+                               .get(table=table, status=TableSession.Status.OPEN))
                 except TableSession.DoesNotExist:
                     try:
                         session = TableSession.objects.create(table=table)
                     except IntegrityError:
-                        session = TableSession.objects.get(
-                            table=table, status=TableSession.Status.OPEN
-                        )
+                        # Another request created it a millisecond ago — lock and reuse it
+                        session = (TableSession.objects
+                                   .select_for_update()
+                                   .get(table=table, status=TableSession.Status.OPEN))
 
                 # ── Session key: claim or validate ────────────────────────────
                 if session.session_key:
