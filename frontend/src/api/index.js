@@ -186,6 +186,7 @@ export const tablesAPI = {
 
   // Biller
   list:          ()              => client.get('/tables/'),
+  openTable:     (id)            => client.post(`/tables/${id}/open/`),
   sessionDetail: (id)            => client.get(`/tables/sessions/${id}/`),
   addBatch:      (id, data)      => client.post(`/tables/sessions/${id}/add_batch/`, data),
   bill:          (id, data)      => client.post(`/tables/sessions/${id}/bill/`, data),

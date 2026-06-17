@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 import {
   ShoppingCart, Plus, Minus, ChevronRight, Loader2,
   CheckCircle2, AlertTriangle, UtensilsCrossed, X,
-  Sparkles, Check, Wand2, ClipboardList, Clock, ChefHat, Bell,
+  Sparkles, Check, Wand2, ClipboardList, Clock, ChefHat, Bell, Lock,
 } from 'lucide-react'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -913,10 +913,20 @@ export default function QROrderPage() {
       setCartOpen(false)
       refetch()
     } catch (err) {
+      const httpStatus = err?.response?.status
+
+      // Table was closed by staff between the last poll and this order attempt —
+      // immediately refresh so the locked screen appears without waiting for the next poll
+      if (httpStatus === 403) {
+        setCartOpen(false)
+        refetch()
+        return
+      }
+
       const detail = err?.response?.data?.out_of_stock
       if (detail?.length) {
         setStockErrors(detail)
-        const outIds = new Set(detail.map(i => String(i.food_item)).filter(Boolean))
+        const outIds  = new Set(detail.map(i => String(i.food_item)).filter(Boolean))
         const outNames = new Set(detail.map(i => i.name))
         setCart(prev => prev.filter(ci => {
           if (ci.is_custom) return !ci.components.some(c => outNames.has(c.name))
@@ -975,6 +985,33 @@ export default function QROrderPage() {
                      flex items-center justify-center gap-2"
         >
           <UtensilsCrossed size={18} /> Order More
+        </button>
+      </div>
+    )
+  }
+
+  // ── Table not open for orders ────────────────────────────────────────────────
+  if (!data.is_accepting_orders) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6 text-center gap-5">
+        <div className="w-20 h-20 rounded-full bg-amber-100 flex items-center justify-center">
+          <Lock size={36} className="text-amber-500" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-xl font-bold text-gray-800">Table Not Ready</h2>
+          <p className="text-gray-500 text-sm">
+            This table is not currently open for ordering.
+          </p>
+          <p className="text-gray-400 text-xs">
+            Please ask a staff member to open the table, then tap Refresh.
+          </p>
+        </div>
+        <button
+          onClick={refetch}
+          className="mt-2 px-6 py-2 rounded-xl bg-primary-600 text-white text-sm font-semibold
+                     active:scale-95 transition-transform"
+        >
+          Refresh
         </button>
       </div>
     )

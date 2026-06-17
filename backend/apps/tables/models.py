@@ -3,9 +3,11 @@ from django.db import models
 
 
 class Table(models.Model):
-    number    = models.PositiveIntegerField(unique=True)
-    qr_token  = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-    is_active = models.BooleanField(default=True)
+    number               = models.PositiveIntegerField(unique=True)
+    qr_token             = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    is_active            = models.BooleanField(default=True)
+    is_accepting_orders  = models.BooleanField(default=False,
+                               help_text='Biller must open the table before customers can order')
 
     class Meta:
         ordering = ['number']

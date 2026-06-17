@@ -8,7 +8,7 @@ class TableAdminSerializer(serializers.ModelSerializer):
 
     class Meta:
         model        = Table
-        fields       = ['id', 'number', 'qr_token', 'is_active', 'session_count']
+        fields       = ['id', 'number', 'qr_token', 'is_active', 'is_accepting_orders', 'session_count']
         read_only_fields = ['qr_token']
 
     def get_session_count(self, obj):
@@ -130,7 +130,8 @@ class TableSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = Table
-        fields = ['id', 'number', 'qr_token', 'is_active', 'active_session', 'pending_sessions']
+        fields = ['id', 'number', 'qr_token', 'is_active', 'is_accepting_orders',
+                  'active_session', 'pending_sessions']
 
     def get_active_session(self, obj):
         session = obj.get_active_session()

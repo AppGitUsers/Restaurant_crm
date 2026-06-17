@@ -17,6 +17,7 @@ urlpatterns = [
     path('tables/sessions/<int:session_id>/add_batch/',    views.TableSessionAddBatchView.as_view(), name='table-session-add-batch'),
     path('tables/sessions/<int:session_id>/bill/',         views.TableSessionBillView.as_view(),     name='table-session-bill'),
     path('tables/sessions/<int:session_id>/end/',          views.TableSessionEndView.as_view(),      name='table-session-end'),
+    path('tables/<int:table_id>/open/',                    views.TableOpenView.as_view(),            name='table-open'),
 
     # Admin — table management
     path('admin/tables/',                views.TableAdminListCreateView.as_view(), name='admin-table-list'),

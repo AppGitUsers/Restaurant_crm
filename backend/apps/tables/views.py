@@ -111,13 +111,14 @@ class PublicMenuView(APIView):
                 })
 
         return Response({
-            'table_number':       table.number,
-            'has_active_session': session is not None,
-            'session_claimed':    session_claimed,
-            'gst_rate':           gst_rate,
-            'categories':         list(grouped.values()),
-            'customizable_types': ct_list,
-            'session_orders':     session_orders,
+            'table_number':        table.number,
+            'has_active_session':  session is not None,
+            'session_claimed':     session_claimed,
+            'is_accepting_orders': table.is_accepting_orders,
+            'gst_rate':            gst_rate,
+            'categories':          list(grouped.values()),
+            'customizable_types':  ct_list,
+            'session_orders':      session_orders,
         })
 
 
@@ -138,6 +139,12 @@ class PublicOrderSubmitView(APIView):
 
     def post(self, request, qr_token):
         table = get_object_or_404(Table, qr_token=qr_token, is_active=True)
+
+        if not table.is_accepting_orders:
+            return Response(
+                {'error': 'This table is not currently open for orders. Please ask staff to open the table.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         serializer = OrderSubmitSerializer(data=request.data)
         if not serializer.is_valid():
@@ -777,6 +784,9 @@ class TableSessionBillView(APIView):
             session.closed_at = timezone.now()
             session.save(update_fields=['discount', 'status', 'closed_at'])
 
+            session.table.is_accepting_orders = False
+            session.table.save(update_fields=['is_accepting_orders'])
+
         # WhatsApp bill notification — non-blocking, never breaks the billing flow
         try:
             from apps.notifications.utils import send_bill_notification
@@ -805,7 +815,42 @@ class TableSessionEndView(APIView):
         session.session_key = ''
         session.closed_at   = timezone.now()
         session.save(update_fields=['status', 'session_key', 'closed_at'])
+
+        session.table.is_accepting_orders = False
+        session.table.save(update_fields=['is_accepting_orders'])
+
         return Response({'status': 'closed', 'session_id': session.id})
+
+
+# ── Biller: open / close a table for ordering ───────────────────────────────
+
+class TableOpenView(APIView):
+    """
+    Toggle whether a table is accepting orders.
+
+    POST → opens the table (is_accepting_orders = True).
+    Calling again on an already-open table with no active session closes it
+    (useful if the biller opened the wrong table by mistake).
+    Cannot close while an active session exists — bill or end the session first.
+    """
+    permission_classes = [IsAdminOrBiller]
+
+    def post(self, request, table_id):
+        table = get_object_or_404(Table, pk=table_id, is_active=True)
+
+        if table.is_accepting_orders:
+            # Toggle off — only if no active session
+            if table.get_active_session():
+                return Response(
+                    {'error': 'Cannot close a table with an active session. Bill or end the session first.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            table.is_accepting_orders = False
+        else:
+            table.is_accepting_orders = True
+
+        table.save(update_fields=['is_accepting_orders'])
+        return Response({'is_accepting_orders': table.is_accepting_orders, 'table_id': table.id})
 
 
 # ── Admin: Table CRUD ────────────────────────────────────────────────────────
