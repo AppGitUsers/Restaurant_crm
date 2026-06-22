@@ -82,29 +82,25 @@ class FoodItem(models.Model):
 
         if not self.tracks_stock:
             self.makeable_count = 999
-            self.is_available   = True
-            self.save(update_fields=['makeable_count', 'is_available'])
+            self.save(update_fields=['makeable_count'])
             return
 
         if self.is_combo:
             comp_ids = list(self.combo_components.values_list('component_id', flat=True))
             if not comp_ids:
                 self.makeable_count = 0
-                self.is_available   = False
-                self.save(update_fields=['makeable_count', 'is_available'])
+                self.save(update_fields=['makeable_count'])
                 return
             counts = list(FoodItem.objects.filter(id__in=comp_ids).values_list('makeable_count', flat=True))
             self.makeable_count = min(counts) if counts else 0
-            self.is_available   = self.makeable_count > 0
-            self.save(update_fields=['makeable_count', 'is_available'])
+            self.save(update_fields=['makeable_count'])
             return
 
         recipe_items = self.recipe_ingredients.select_related('ingredient').all()
 
         if not recipe_items.exists():
             self.makeable_count = 999
-            self.is_available   = True
-            self.save(update_fields=['makeable_count', 'is_available'])
+            self.save(update_fields=['makeable_count'])
             return
 
         min_count = None
@@ -123,8 +119,7 @@ class FoodItem(models.Model):
                 min_count = possible
 
         self.makeable_count = min_count if min_count is not None else 0
-        self.is_available   = self.makeable_count > 0
-        self.save(update_fields=['makeable_count', 'is_available'])
+        self.save(update_fields=['makeable_count'])
 
 
 class RecipeIngredient(models.Model):
