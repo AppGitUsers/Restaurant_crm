@@ -65,6 +65,14 @@ class FoodItemViewSet(viewsets.ModelViewSet):
             return FoodItemWriteSerializer
         return FoodItemSerializer
 
+    def perform_update(self, serializer):
+        was_tracking = serializer.instance.tracks_stock
+        instance = serializer.save()
+        # Switching from no-tracking to tracking: cached makeable_count is still
+        # 999 (the unlimited sentinel). Recalculate immediately from real stock.
+        if not was_tracking and instance.tracks_stock:
+            instance.update_makeable_count()
+
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def set_recipe(self, request, pk=None):
         """Set/replace full recipe for a food item. Body: {ingredients:[{ingredient,quantity_required}]}"""
