@@ -62,8 +62,8 @@ function VendorTab() {
   const [form, setForm]     = useState({ name: '', contact_name: '', phone: '', email: '', address: '', gstin: '' })
 
   const { data, isLoading } = useQuery({ queryKey: ['vendors', search], queryFn: () => inventoryAPI.vendors.list({ search }).then(r => r.data.results || r.data) })
-  const save   = useMutation({ mutationFn: d => sel ? inventoryAPI.vendors.update(sel.id, d) : inventoryAPI.vendors.create(d), onSuccess: () => { qc.invalidateQueries(['vendors']); setModal(false); toast.success('Saved!') } })
-  const remove = useMutation({ mutationFn: id => inventoryAPI.vendors.delete(id), onSuccess: () => { qc.invalidateQueries(['vendors']); setDel(null); toast.success('Deleted') } })
+  const save   = useMutation({ mutationFn: d => sel ? inventoryAPI.vendors.update(sel.id, d) : inventoryAPI.vendors.create(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['vendors'] }); setModal(false); toast.success('Saved!') } })
+  const remove = useMutation({ mutationFn: id => inventoryAPI.vendors.delete(id), onSuccess: () => { qc.invalidateQueries({ queryKey: ['vendors'] }); setDel(null); toast.success('Deleted') } })
   const openCreate = () => { setSel(null); setForm({ name: '', contact_name: '', phone: '', email: '', address: '', gstin: '' }); setModal(true) }
   const openEdit   = v => { setSel(v); setForm({ name: v.name, contact_name: v.contact_name, phone: v.phone, email: v.email, address: v.address, gstin: v.gstin }); setModal(true) }
   const vendors = data || []
@@ -153,7 +153,13 @@ function StockTab() {
   const { data: lowAlert }  = useQuery({ queryKey: ['low-stock'], queryFn: () => inventoryAPI.stock.lowAlert().then(r => r.data) })
   const adjust = useMutation({
     mutationFn: ({ id, data }) => inventoryAPI.stock.adjust(id, data),
-    onSuccess: () => { qc.invalidateQueries(['stock']); setAdjustModal(null); toast.success('Stock adjusted') },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['stock'] })
+      qc.invalidateQueries({ queryKey: ['low-stock'] })
+      setAdjustModal(null)
+      toast.success('Stock adjusted')
+    },
+    onError: () => toast.error('Failed to adjust stock'),
   })
 
   const stocks   = data || []
@@ -233,8 +239,8 @@ function InvoiceTab() {
     queryFn: () => inventoryAPI.invoices.list({ search, status: statusFilter || undefined }).then(r => r.data.results || r.data),
   })
 
-  const save         = useMutation({ mutationFn: d => inventoryAPI.invoices.create(d), onSuccess: () => { qc.invalidateQueries(['invoices']); setModal(false); toast.success('Invoice created') } })
-  const markReceived = useMutation({ mutationFn: id => inventoryAPI.invoices.markReceived(id), onSuccess: () => { qc.invalidateQueries(['invoices']); qc.invalidateQueries(['stock']); toast.success('Stock updated from invoice') } })
+  const save         = useMutation({ mutationFn: d => inventoryAPI.invoices.create(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); setModal(false); toast.success('Invoice created') } })
+  const markReceived = useMutation({ mutationFn: id => inventoryAPI.invoices.markReceived(id), onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); qc.invalidateQueries({ queryKey: ['stock'] }); qc.invalidateQueries({ queryKey: ['low-stock'] }); toast.success('Stock updated from invoice') } })
   const addPayment   = useMutation({
     mutationFn: ({ id, data }) => inventoryAPI.invoices.addPayment(id, data),
     onSuccess: (response) => {

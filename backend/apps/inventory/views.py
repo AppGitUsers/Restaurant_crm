@@ -1,3 +1,4 @@
+from decimal import Decimal, InvalidOperation
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -36,6 +37,10 @@ class StockViewSet(viewsets.ModelViewSet):
         note     = request.data.get('note', 'Manual adjustment')
         if quantity is None:
             return Response({'error': 'quantity is required'}, status=400)
+        try:
+            quantity = Decimal(str(quantity))
+        except (InvalidOperation, ValueError):
+            return Response({'error': 'quantity must be a valid number'}, status=400)
         old_qty = stock.current_quantity
         stock.current_quantity = quantity
         stock.save()
