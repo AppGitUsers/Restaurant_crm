@@ -12,6 +12,7 @@ urlpatterns = [
     path('kitchen/batches/<int:batch_id>/',    views.KitchenBatchUpdateView.as_view(), name='kitchen-batch-update'),
 
     # Biller — authenticated
+    path('tables/today/',                                  views.TodaySessionsView.as_view(),        name='today-sessions'),
     path('tables/',                                        views.TableListView.as_view(),            name='table-list'),
     path('tables/sessions/<int:session_id>/',              views.TableSessionDetailView.as_view(),   name='table-session-detail'),
     path('tables/sessions/<int:session_id>/add_batch/',    views.TableSessionAddBatchView.as_view(), name='table-session-add-batch'),

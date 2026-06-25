@@ -20,10 +20,11 @@ import SettingsPage   from '@/pages/settings/SettingsPage'
 import AdminTablesPage from '@/pages/admin/AdminTablesPage'
 
 // Billing pages
-import BillingPage    from '@/pages/billing/BillingPage'
-import TablesGridPage from '@/pages/billing/TablesGridPage'
-import TableBillPage  from '@/pages/billing/TableBillPage'
-import AttendanceKiosk from '@/pages/attendance/AttendanceKiosk'
+import BillingPage      from '@/pages/billing/BillingPage'
+import TablesGridPage   from '@/pages/billing/TablesGridPage'
+import TableBillPage    from '@/pages/billing/TableBillPage'
+import TodayOrdersPage  from '@/pages/billing/TodayOrdersPage'
+import AttendanceKiosk  from '@/pages/attendance/AttendanceKiosk'
 
 // Kitchen
 import KitchenPage from '@/pages/kitchen/KitchenPage'
@@ -71,6 +72,7 @@ export default function App() {
         <Route path="staff"          element={<StaffPage />} />
         <Route path="customers"      element={<CustomersPage />} />
         <Route path="tables-admin"   element={<AdminTablesPage />} />
+        <Route path="today-orders"   element={<TodayOrdersPage />} />
         <Route path="settings"       element={<SettingsPage />} />
       </Route>
 
@@ -91,6 +93,7 @@ export default function App() {
         <Route path="tables"              element={<TablesGridPage />} />
         <Route path="tables/:sessionId"   element={<TableBillPage />} />
         <Route path="customers"           element={<CustomersPage />} />
+        <Route path="today-orders"        element={<TodayOrdersPage />} />
       </Route>
 
       {/* Public — Customer QR order page (no auth) */}

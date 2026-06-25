@@ -185,6 +185,7 @@ export const tablesAPI = {
   },
 
   // Biller
+  todaySessions: ()              => client.get('/tables/today/'),
   list:          ()              => client.get('/tables/'),
   openTable:     (id)            => client.post(`/tables/${id}/open/`),
   sessionDetail: (id)            => client.get(`/tables/sessions/${id}/`),

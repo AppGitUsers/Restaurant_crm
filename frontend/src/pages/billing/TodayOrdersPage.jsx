@@ -1,0 +1,297 @@
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { tablesAPI } from '@/api'
+import { PageLoader, Empty } from '@/components/ui'
+import {
+  RefreshCcw, ClipboardList, Clock, Users,
+  TrendingUp, Store, Utensils, Receipt, Search,
+} from 'lucide-react'
+import clsx from 'clsx'
+
+const fmt = iso =>
+  iso
+    ? new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+    : '—'
+
+const dur = (start, end) => {
+  const ms = Math.max(0, (end ? new Date(end) : new Date()) - new Date(start))
+  const m  = Math.floor(ms / 60000)
+  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`
+}
+
+const STATUS = {
+  OPEN:   { label: 'Active', cls: 'bg-blue-100  text-blue-700'  },
+  CLOSED: { label: 'Closed', cls: 'bg-amber-100 text-amber-700' },
+  BILLED: { label: 'Billed', cls: 'bg-green-100 text-green-700' },
+}
+
+const SESSION_FILTERS = [
+  { key: 'ALL',    label: 'All'    },
+  { key: 'OPEN',   label: 'Active' },
+  { key: 'CLOSED', label: 'Closed' },
+  { key: 'BILLED', label: 'Billed' },
+]
+
+export default function TodayOrdersPage() {
+  const [activeTab,  setActiveTab]  = useState('sessions')  // 'sessions' | 'counter'
+  const [filter,     setFilter]     = useState('ALL')
+  const [search,     setSearch]     = useState('')
+
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
+    queryKey:        ['today-sessions'],
+    queryFn:         () => tablesAPI.todaySessions().then(r => r.data),
+    refetchInterval: 30_000,
+    retry:           1,
+  })
+
+  const summary       = data?.summary        || {}
+  const allSessions   = data?.sessions       || []
+  const allCounter    = data?.counter_orders || []
+
+  const q = search.trim().toLowerCase()
+
+  // Table sessions — status filter + search by table number
+  const sessions = allSessions
+    .filter(s => filter === 'ALL' || s.status === filter)
+    .filter(s => !q || String(s.table_number).includes(q))
+
+  // Counter bills — search by order number, customer phone or name
+  const counterOrders = allCounter.filter(o =>
+    !q ||
+    o.order_number.toLowerCase().includes(q) ||
+    o.customer_phone.includes(q) ||
+    o.customer_name.toLowerCase().includes(q)
+  )
+
+  return (
+    <div className="p-4 sm:p-6 h-full overflow-y-auto">
+      {/* Header */}
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Today's Orders</h1>
+          <p className="page-subtitle">
+            {data?.date || '—'} &middot; {allSessions.length} table session{allSessions.length !== 1 ? 's' : ''} &middot; {allCounter.length} counter bill{allCounter.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+        <button onClick={() => refetch()} disabled={isFetching} className="btn-ghost">
+          <RefreshCcw size={15} className={isFetching ? 'animate-spin' : ''} /> Refresh
+        </button>
+      </div>
+
+      {/* Summary strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+        <SummaryCard icon={<ClipboardList size={20} />} label="Table Sessions"  value={summary.total_sessions      ?? 0}                        bg="bg-primary-50" text="text-primary-600" />
+        <SummaryCard icon={<Clock         size={20} />} label="Active Now"      value={summary.active_sessions     ?? 0}                        bg="bg-blue-50"    text="text-blue-600"    />
+        <SummaryCard icon={<TrendingUp    size={20} />} label="Today's Revenue" value={`₹${(summary.today_revenue  ?? 0).toFixed(0)}`}           bg="bg-green-50"   text="text-green-600"   />
+        <SummaryCard icon={<Store         size={20} />} label="Counter Bills"   value={summary.counter_bills_today ?? 0}                        bg="bg-orange-50"  text="text-orange-600"  />
+        <SummaryCard icon={<Users         size={20} />} label="Scanner Rounds"  value={summary.customer_batches    ?? 0}                        bg="bg-indigo-50"  text="text-indigo-600"  />
+      </div>
+
+      {isLoading && <PageLoader />}
+      {isError && (
+        <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-sm text-red-700 mb-4">
+          Could not load today's data.
+        </div>
+      )}
+
+      {/* Tab bar + search */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+        {/* Main tabs */}
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 flex-shrink-0">
+          <button
+            onClick={() => setActiveTab('sessions')}
+            className={clsx(
+              'flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
+              activeTab === 'sessions' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            )}
+          >
+            <ClipboardList size={14} /> Table Sessions
+            <span className={clsx('ml-1 text-xs px-1.5 py-0.5 rounded-full', activeTab === 'sessions' ? 'bg-primary-100 text-primary-600' : 'bg-gray-200 text-gray-500')}>
+              {allSessions.length}
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('counter')}
+            className={clsx(
+              'flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
+              activeTab === 'counter' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            )}
+          >
+            <Receipt size={14} /> Counter Bills
+            <span className={clsx('ml-1 text-xs px-1.5 py-0.5 rounded-full', activeTab === 'counter' ? 'bg-primary-100 text-primary-600' : 'bg-gray-200 text-gray-500')}>
+              {allCounter.length}
+            </span>
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="relative flex-1 max-w-xs">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            className="input pl-8 py-1.5 text-sm w-full"
+            placeholder={activeTab === 'sessions' ? 'Search table no…' : 'Order no / phone / name…'}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+
+        {/* Status filter — only for sessions tab */}
+        {activeTab === 'sessions' && (
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1 flex-shrink-0">
+            {SESSION_FILTERS.map(f => (
+              <button
+                key={f.key}
+                onClick={() => setFilter(f.key)}
+                className={clsx(
+                  'px-3 py-1 rounded-lg text-xs font-medium transition-colors',
+                  filter === f.key ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                )}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Table Sessions tab ─────────────────────────────────────────── */}
+      {activeTab === 'sessions' && (
+        <>
+          {!isLoading && !isError && sessions.length === 0 && (
+            <Empty message="No table sessions found" icon={<Utensils size={40} />} />
+          )}
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+            {sessions.map(s => <SessionCard key={s.id} session={s} />)}
+          </div>
+        </>
+      )}
+
+      {/* ── Counter Bills tab ──────────────────────────────────────────── */}
+      {activeTab === 'counter' && (
+        <>
+          {!isLoading && !isError && counterOrders.length === 0 && (
+            <Empty message="No counter bills found" icon={<Receipt size={40} />} />
+          )}
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+            {counterOrders.map(o => <CounterOrderCard key={o.id} order={o} />)}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function SummaryCard({ icon, label, value, bg, text }) {
+  return (
+    <div className={clsx('rounded-xl p-4 flex items-center gap-3', bg)}>
+      <div className={clsx('flex-shrink-0', text)}>{icon}</div>
+      <div className="min-w-0">
+        <p className={clsx('text-xl font-bold leading-tight truncate', text)}>{value}</p>
+        <p className="text-xs text-gray-500">{label}</p>
+      </div>
+    </div>
+  )
+}
+
+function SessionCard({ session }) {
+  const cfg     = STATUS[session.status] || STATUS.OPEN
+  const batches = session.batches || []
+
+  return (
+    <div className="card">
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-primary-50 flex flex-col items-center justify-center flex-shrink-0">
+            <span className="text-xs text-gray-400 leading-none">T</span>
+            <span className="text-2xl font-bold text-primary-600 leading-none">{session.table_number}</span>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-800">
+              {session.item_count} item{session.item_count !== 1 ? 's' : ''} &middot; ₹{parseFloat(session.subtotal).toFixed(0)}
+            </p>
+            <p className="text-xs text-gray-400">
+              {fmt(session.opened_at)} → {session.closed_at ? fmt(session.closed_at) : 'ongoing'}
+              &nbsp;&middot;&nbsp;{dur(session.opened_at, session.closed_at)}
+            </p>
+          </div>
+        </div>
+        <span className={clsx('text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0', cfg.cls)}>
+          {cfg.label}
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {batches.length === 0 && (
+          <p className="text-xs text-gray-400 text-center py-1">No orders yet</p>
+        )}
+        {batches.map((batch, idx) => (
+          <div key={batch.id} className="bg-gray-50 rounded-lg p-2.5">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-bold text-gray-500">Round {idx + 1}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">{fmt(batch.placed_at)}</span>
+                <span className={clsx(
+                  'text-xs px-1.5 py-0.5 rounded font-semibold',
+                  batch.added_by === 'BILLER'
+                    ? 'bg-orange-100 text-orange-700'
+                    : 'bg-indigo-100 text-indigo-700'
+                )}>
+                  {batch.added_by === 'BILLER' ? 'Counter' : 'Scanner'}
+                </span>
+              </div>
+            </div>
+            <div className="space-y-0.5">
+              {(batch.items || []).map((item, j) => (
+                <div key={j} className="flex justify-between text-xs text-gray-600">
+                  <span className="truncate mr-2">
+                    {item.food_item_name}{item.quantity > 1 ? ` ×${item.quantity}` : ''}
+                  </span>
+                  <span className="font-medium flex-shrink-0">₹{parseFloat(item.line_total).toFixed(0)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function CounterOrderCard({ order }) {
+  return (
+    <div className="card">
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <p className="font-mono text-sm font-bold text-gray-800">{order.order_number}</p>
+          <p className="text-xs text-gray-400">{fmt(order.created_at)} &middot; by {order.biller_name}</p>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <p className="text-sm font-bold text-green-600">₹{order.total_amount.toFixed(0)}</p>
+          <span className="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-semibold">
+            Counter
+          </span>
+        </div>
+      </div>
+
+      {(order.customer_name || order.customer_phone) && (
+        <p className="text-xs text-gray-500 mb-2">
+          {order.customer_name}{order.customer_name && order.customer_phone ? ' · ' : ''}{order.customer_phone}
+        </p>
+      )}
+
+      <div className="bg-gray-50 rounded-lg p-2.5 space-y-0.5">
+        {(order.items || []).map((item, i) => (
+          <div key={i} className="flex justify-between text-xs text-gray-600">
+            <span className="truncate mr-2">{item.name}{item.quantity > 1 ? ` ×${item.quantity}` : ''}</span>
+            <span className="font-medium flex-shrink-0">₹{item.line_total.toFixed(0)}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex justify-between text-xs text-gray-400 mt-2 pt-2 border-t border-gray-100">
+        <span>{order.payment_method}</span>
+        {order.discount > 0 && <span>Discount: ₹{order.discount.toFixed(0)}</span>}
+      </div>
+    </div>
+  )
+}

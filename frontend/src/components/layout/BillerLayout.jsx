@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, UtensilsCrossed, Clock, LayoutGrid, Receipt, Users } from 'lucide-react'
+import { LogOut, UtensilsCrossed, Clock, LayoutGrid, Receipt, Users, ClipboardList } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { authAPI } from '@/api'
 import { ConfirmDialog } from '@/components/ui'
@@ -92,6 +92,17 @@ export default function BillerLayout() {
           )}
         >
           <Users size={15} /> Customers
+        </NavLink>
+        <NavLink
+          to="/billing/today-orders"
+          className={({ isActive }) => clsx(
+            'flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors',
+            isActive
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          )}
+        >
+          <ClipboardList size={15} /> Today
         </NavLink>
       </nav>
 

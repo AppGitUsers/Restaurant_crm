@@ -5,6 +5,9 @@ from rest_framework.permissions import AllowAny
 from rest_framework.throttling import AnonRateThrottle
 from django.shortcuts import get_object_or_404
 from django.db import transaction, IntegrityError
+from django.utils import timezone
+from decimal import Decimal
+from datetime import datetime, time as _time
 
 from apps.accounts.permissions import IsAdmin, IsAdminOrBiller, IsAdminOrBillerOrKitchen
 from .models import Table, TableSession, TableOrderBatch, TableOrderItem
@@ -898,3 +901,104 @@ class TableAdminDetailView(APIView):
             )
         table.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ── Today's Orders dashboard ─────────────────────────────────────────────────
+
+class TodaySessionsView(APIView):
+    """
+    Returns all table sessions opened today along with per-batch detail
+    and a summary card for the dashboard header.
+    """
+    permission_classes = [IsAdminOrBiller]
+
+    def get(self, request):
+        from django.db.models import Q
+
+        local_tz  = timezone.get_current_timezone()
+        today     = timezone.localdate()
+        day_start = timezone.make_aware(datetime.combine(today, _time.min), local_tz)
+        day_end   = timezone.make_aware(datetime.combine(today, _time.max), local_tz)
+
+        # OPEN   — currently active (always show)
+        # CLOSED — ended by biller, awaiting billing (always show)
+        # BILLED — completed sessions from the last 30 days
+        from datetime import timedelta
+        thirty_days_ago = timezone.now() - timedelta(days=30)
+
+        sessions = list(
+            TableSession.objects
+            .filter(
+                Q(status__in=[TableSession.Status.OPEN, TableSession.Status.CLOSED]) |
+                Q(status=TableSession.Status.BILLED, closed_at__gte=thirty_days_ago)
+            )
+            .select_related('table')
+            .prefetch_related('batches__items__food_item')
+            .order_by('-opened_at')
+        )
+
+        biller_batches   = 0
+        customer_batches = 0
+        table_revenue    = Decimal('0')   # table billings today only
+        active_count     = 0
+
+        for s in sessions:
+            if s.status == TableSession.Status.BILLED:
+                if s.closed_at and s.closed_at >= day_start:
+                    table_revenue += s.subtotal
+            if s.status == TableSession.Status.OPEN:
+                active_count += 1
+            for b in s.batches.all():
+                if b.added_by == TableOrderBatch.AddedBy.BILLER:
+                    biller_batches += 1
+                else:
+                    customer_batches += 1
+
+        # ── Counter (quick-bill) orders — no table session ───────────────────
+        from apps.billing.models import Order as BillingOrder
+
+        counter_orders = list(
+            BillingOrder.objects
+            .filter(table_session__isnull=True, status=BillingOrder.Status.PAID,
+                    created_at__gte=day_start, created_at__lte=day_end)
+            .prefetch_related('items__food_item')
+            .select_related('biller')
+            .order_by('-created_at')
+        )
+
+        counter_revenue = sum((o.total_amount for o in counter_orders), Decimal('0'))
+
+        def _serialize_counter(o):
+            return {
+                'id':             o.id,
+                'order_number':   o.order_number,
+                'customer_name':  o.customer_name,
+                'customer_phone': o.customer_phone,
+                'payment_method': o.payment_method,
+                'total_amount':   float(o.total_amount),
+                'discount':       float(o.discount),
+                'created_at':     o.created_at.isoformat(),
+                'biller_name':    (o.biller.get_full_name() or o.biller.username) if o.biller else '—',
+                'items': [
+                    {
+                        'name':       i.food_item.name if i.food_item_id else (i.custom_name or 'Custom'),
+                        'quantity':   i.quantity,
+                        'line_total': float(i.line_total),
+                    }
+                    for i in o.items.all()
+                ],
+            }
+
+        return Response({
+            'date': str(today),
+            'summary': {
+                'total_sessions':      len(sessions),
+                'active_sessions':     active_count,
+                'today_revenue':       float(table_revenue + counter_revenue),
+                'biller_batches':      biller_batches,
+                'customer_batches':    customer_batches,
+                'counter_bills_today': len(counter_orders),
+            },
+            'sessions':       TableSessionSerializer(sessions, many=True).data,
+            'counter_orders': [_serialize_counter(o) for o in counter_orders],
+        })
