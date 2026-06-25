@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { tablesAPI, menuAPI, customersAPI, settingsAPI } from '@/api'
+import { tablesAPI, menuAPI, customersAPI, settingsAPI, billingAPI } from '@/api'
 import { PageLoader, Modal, Field } from '@/components/ui'
 import { ArrowLeft, Plus, Minus, CreditCard, ChefHat, Check, Loader2, CheckCircle, MessageCircle } from 'lucide-react'
 import { formatDistanceToNow, parseISO, format } from 'date-fns'
@@ -274,36 +274,45 @@ function BillModal({ open, onClose, session, gstRate, onBill }) {
 }
 
 // ── Table Bill Receipt Modal ─────────────────────────────────────────────────
-function TableBillReceiptModal({ open, onClose, receipt, session, gstRate }) {
-  if (!receipt || !session) return null
+// Uses the order object returned directly by the bill API — no dependency on
+// the live session query, so invalidation timing cannot affect rendering.
+function TableBillReceiptModal({ open, onClose, order }) {
+  if (!order) return null
 
-  const subtotal = parseFloat(session.subtotal)
-  const disc     = parseFloat(session.discount) || 0
-  const taxable  = Math.max(0, subtotal - disc)
-  const tax      = taxable * gstRate
-  const total    = taxable + tax
+  const downloadPdf = async () => {
+    try {
+      const { data } = await billingAPI.orders.billPdf(order.id)
+      const url = URL.createObjectURL(new Blob([data], { type: 'application/pdf' }))
+      const a   = document.createElement('a')
+      a.href    = url
+      a.download = `bill_${order.order_number}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error('PDF download failed')
+    }
+  }
 
   const sendWhatsApp = () => {
-    const digits = receipt.phone.replace(/\D/g, '')
+    const digits = (order.customer_phone || '').replace(/\D/g, '')
     const phone  = digits.length === 10 ? `91${digits}` : digits
 
     const lines = []
-    lines.push(`🧾 *Bill Receipt — ${receipt.orderNumber}*`)
+    lines.push(`🧾 *Bill Receipt — ${order.order_number}*`)
     lines.push(``)
     lines.push(`*Items:*`)
-    session.batches.forEach(batch => {
-      batch.items.forEach(item => {
-        lines.push(`• ${item.food_item_name} ×${item.quantity}  ₹${parseFloat(item.line_total).toFixed(2)}`)
-        if (item.notes) lines.push(`  ↳ ${item.notes}`)
-      })
+    order.items.forEach(item => {
+      lines.push(`• ${item.food_item_name} ×${item.quantity}  ₹${parseFloat(item.line_total).toFixed(2)}`)
+      if (item.notes) lines.push(`  ↳ ${item.notes}`)
     })
     lines.push(``)
-    lines.push(`Subtotal:  ₹${subtotal.toFixed(2)}`)
-    if (disc > 0) lines.push(`Discount:  -₹${disc.toFixed(2)}`)
-    lines.push(`Tax:       ₹${tax.toFixed(2)}`)
-    lines.push(`*Total:    ₹${total.toFixed(2)}*`)
+    lines.push(`Subtotal:  ₹${parseFloat(order.subtotal).toFixed(2)}`)
+    if (parseFloat(order.discount) > 0)
+      lines.push(`Discount:  -₹${parseFloat(order.discount).toFixed(2)}`)
+    lines.push(`Tax:       ₹${parseFloat(order.tax_amount).toFixed(2)}`)
+    lines.push(`*Total:    ₹${parseFloat(order.total_amount).toFixed(2)}*`)
     lines.push(``)
-    lines.push(`Payment: ${receipt.method}`)
+    lines.push(`Payment: ${order.payment_method}`)
     lines.push(``)
     lines.push(`Thank you for visiting us! 🙏`)
 
@@ -314,44 +323,45 @@ function TableBillReceiptModal({ open, onClose, receipt, session, gstRate }) {
     <Modal open={open} onClose={onClose} title="Bill Receipt" size="md"
       footer={<>
         <button onClick={onClose} className="btn-ghost">Close</button>
-        {receipt.phone && (
+        {order.customer_phone && (
           <button onClick={sendWhatsApp}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white text-sm font-semibold transition-colors">
             <MessageCircle size={15} />WhatsApp
           </button>
         )}
+        <button onClick={downloadPdf} className="btn-primary">
+          <CheckCircle size={15} />Download PDF
+        </button>
       </>}
     >
       <div className="text-center mb-5">
         <CheckCircle size={44} className="text-primary-400 mx-auto mb-2" />
         <p className="font-bold text-lg text-gray-800">Payment Successful!</p>
-        <p className="text-sm text-gray-400">Bill No: {receipt.orderNumber}</p>
+        <p className="text-sm text-gray-400">Bill No: {order.order_number}</p>
       </div>
 
       <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm mb-4">
-        {receipt.name  && <div className="flex justify-between"><span className="text-gray-500">Customer</span><span className="font-medium">{receipt.name}</span></div>}
-        {receipt.phone && <div className="flex justify-between"><span className="text-gray-500">Phone</span><span>{receipt.phone}</span></div>}
-        <div className="flex justify-between"><span className="text-gray-500">Payment</span><span className="badge-green">{receipt.method}</span></div>
+        {order.customer_name  && <div className="flex justify-between"><span className="text-gray-500">Customer</span><span className="font-medium">{order.customer_name}</span></div>}
+        {order.customer_phone && <div className="flex justify-between"><span className="text-gray-500">Phone</span><span>{order.customer_phone}</span></div>}
+        <div className="flex justify-between"><span className="text-gray-500">Payment</span><span className="badge-green">{order.payment_method}</span></div>
       </div>
 
       <div className="space-y-2 text-sm">
-        {session.batches.map((batch, bi) =>
-          batch.items.map((item, ii) => (
-            <div key={`${bi}-${ii}`}>
-              <div className="flex justify-between">
-                <span className="text-gray-700">{item.food_item_name} × {item.quantity}</span>
-                <span className="font-medium">₹{parseFloat(item.line_total).toFixed(2)}</span>
-              </div>
-              {item.notes && <p className="text-xs text-gray-400 mt-0.5">{item.notes}</p>}
+        {order.items.map((item, i) => (
+          <div key={i}>
+            <div className="flex justify-between">
+              <span className="text-gray-700">{item.food_item_name} × {item.quantity}</span>
+              <span className="font-medium">₹{parseFloat(item.line_total).toFixed(2)}</span>
             </div>
-          ))
-        )}
+            {item.notes && <p className="text-xs text-gray-400 mt-0.5">{item.notes}</p>}
+          </div>
+        ))}
         <div className="border-t border-gray-200 pt-2 space-y-1">
-          <div className="flex justify-between text-gray-500"><span>Subtotal</span><span>₹{subtotal.toFixed(2)}</span></div>
-          {disc > 0 && <div className="flex justify-between text-red-500"><span>Discount</span><span>-₹{disc.toFixed(2)}</span></div>}
-          <div className="flex justify-between text-gray-500"><span>Tax</span><span>₹{tax.toFixed(2)}</span></div>
+          <div className="flex justify-between text-gray-500"><span>Subtotal</span><span>₹{parseFloat(order.subtotal).toFixed(2)}</span></div>
+          {parseFloat(order.discount) > 0 && <div className="flex justify-between text-red-500"><span>Discount</span><span>-₹{parseFloat(order.discount).toFixed(2)}</span></div>}
+          <div className="flex justify-between text-gray-500"><span>Tax</span><span>₹{parseFloat(order.tax_amount).toFixed(2)}</span></div>
           <div className="flex justify-between font-bold text-primary-600 text-base pt-1 border-t">
-            <span>Total</span><span>₹{total.toFixed(2)}</span>
+            <span>Total</span><span>₹{parseFloat(order.total_amount).toFixed(2)}</span>
           </div>
         </div>
       </div>
@@ -369,7 +379,7 @@ export default function TableBillPage() {
   const [addOpen,         setAddOpen]         = useState(false)
   const [billOpen,        setBillOpen]        = useState(false)
   const [endConfirmOpen,  setEndConfirmOpen]  = useState(false)
-  const [billReceipt,     setBillReceipt]     = useState(null) // { orderNumber, phone, name, method }
+  const [billedOrder,     setBilledOrder]     = useState(null)
 
   const { data: settings } = useQuery({
     queryKey: ['restaurant-settings'],
@@ -387,15 +397,9 @@ export default function TableBillPage() {
 
   const billMutation = useMutation({
     mutationFn: (data) => tablesAPI.bill(sessionId, { ...data, discount }),
-    onSuccess: (res, variables) => {
-      qc.invalidateQueries(['tables-grid'])
-      qc.invalidateQueries(['table-session', sessionId])
-      setBillReceipt({
-        orderNumber: res.data.order_number,
-        phone:       variables.customer_phone,
-        name:        variables.customer_name,
-        method:      variables.payment_method,
-      })
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['tables-grid'] })
+      setBilledOrder(res.data)
     },
     onError: () => toast.error('Billing failed. Please try again.'),
   })
@@ -550,11 +554,9 @@ export default function TableBillPage() {
         onBill={(data) => { setBillOpen(false); billMutation.mutate(data) }}
       />
       <TableBillReceiptModal
-        open={!!billReceipt}
-        onClose={() => { setBillReceipt(null); navigate('/billing/tables') }}
-        receipt={billReceipt}
-        session={session}
-        gstRate={gstRate}
+        open={!!billedOrder}
+        onClose={() => { setBilledOrder(null); navigate('/billing/tables') }}
+        order={billedOrder}
       />
 
       {/* End Session confirmation modal */}
