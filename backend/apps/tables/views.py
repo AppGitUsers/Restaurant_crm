@@ -942,8 +942,8 @@ class TodaySessionsView(APIView):
                 Q(status__in=[TableSession.Status.OPEN, TableSession.Status.CLOSED]) |
                 Q(status=TableSession.Status.BILLED, closed_at__gte=thirty_days_ago)
             )
-            .select_related('table')
-            .prefetch_related('batches__items__food_item')
+            .select_related('table', 'order', 'order__biller')
+            .prefetch_related('batches__items__food_item', 'order__items__food_item')
             .order_by('-opened_at')
         )
 
@@ -985,6 +985,8 @@ class TodaySessionsView(APIView):
                 'customer_name':  o.customer_name,
                 'customer_phone': o.customer_phone,
                 'payment_method': o.payment_method,
+                'subtotal':       float(o.subtotal),
+                'tax_amount':     float(o.tax_amount),
                 'total_amount':   float(o.total_amount),
                 'discount':       float(o.discount),
                 'created_at':     o.created_at.isoformat(),
@@ -994,10 +996,47 @@ class TodaySessionsView(APIView):
                         'name':       i.food_item.name if i.food_item_id else (i.custom_name or 'Custom'),
                         'quantity':   i.quantity,
                         'line_total': float(i.line_total),
+                        'notes':      i.notes,
                     }
                     for i in o.items.all()
                 ],
             }
+
+        def _billing_order_summary(s):
+            try:
+                o = s.order
+            except Exception:
+                return None
+            return {
+                'order_number':   o.order_number,
+                'customer_name':  o.customer_name,
+                'customer_phone': o.customer_phone,
+                'payment_method': o.payment_method,
+                'subtotal':       float(o.subtotal),
+                'discount':       float(o.discount),
+                'tax_amount':     float(o.tax_amount),
+                'total_amount':   float(o.total_amount),
+                'items': [
+                    {
+                        'food_item_name': i.food_item.name if i.food_item_id else (i.custom_name or 'Custom'),
+                        'quantity':       i.quantity,
+                        'line_total':     float(i.line_total),
+                        'notes':          i.notes,
+                    }
+                    for i in o.items.all()
+                ],
+            }
+
+        sessions_data = TableSessionSerializer(sessions, many=True).data
+        result_sessions = []
+        for s_data, s_obj in zip(sessions_data, sessions):
+            d = dict(s_data)
+            d['billing_order'] = (
+                _billing_order_summary(s_obj)
+                if s_obj.status == TableSession.Status.BILLED
+                else None
+            )
+            result_sessions.append(d)
 
         return Response({
             'date': str(today),
@@ -1009,6 +1048,6 @@ class TodaySessionsView(APIView):
                 'customer_batches':    customer_batches,
                 'counter_bills_today': len(counter_orders),
             },
-            'sessions':       TableSessionSerializer(sessions, many=True).data,
+            'sessions':       result_sessions,
             'counter_orders': [_serialize_counter(o) for o in counter_orders],
         })

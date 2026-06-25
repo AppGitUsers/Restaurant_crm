@@ -4,7 +4,7 @@ import { tablesAPI } from '@/api'
 import { PageLoader, Empty } from '@/components/ui'
 import {
   RefreshCcw, ClipboardList, Clock, Users,
-  TrendingUp, Store, Utensils, Receipt, Search,
+  TrendingUp, Store, Utensils, Receipt, Search, MessageCircle,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -31,6 +31,31 @@ const SESSION_FILTERS = [
   { key: 'CLOSED', label: 'Closed' },
   { key: 'BILLED', label: 'Billed' },
 ]
+
+function sendWhatsApp({ order_number, customer_phone, items, subtotal, discount, tax_amount, total_amount, payment_method }) {
+  const digits = (customer_phone || '').replace(/\D/g, '')
+  const phone  = digits.length === 10 ? `91${digits}` : digits
+  const lines  = []
+  lines.push(`🧾 *Bill Receipt — ${order_number}*`)
+  lines.push(``)
+  lines.push(`*Items:*`)
+  items.forEach(item => {
+    const name = item.food_item_name || item.name || 'Item'
+    lines.push(`• ${name} ×${item.quantity}  ₹${parseFloat(item.line_total).toFixed(2)}`)
+    if (item.notes) lines.push(`  ↳ ${item.notes}`)
+  })
+  lines.push(``)
+  lines.push(`Subtotal:  ₹${parseFloat(subtotal).toFixed(2)}`)
+  if (parseFloat(discount) > 0)
+    lines.push(`Discount:  -₹${parseFloat(discount).toFixed(2)}`)
+  lines.push(`Tax:       ₹${parseFloat(tax_amount).toFixed(2)}`)
+  lines.push(`*Total:    ₹${parseFloat(total_amount).toFixed(2)}*`)
+  lines.push(``)
+  lines.push(`Payment: ${payment_method}`)
+  lines.push(``)
+  lines.push(`Thank you for visiting us! 🙏`)
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank')
+}
 
 export default function TodayOrdersPage() {
   const [activeTab,  setActiveTab]  = useState('sessions')  // 'sessions' | 'counter'
@@ -215,10 +240,30 @@ function SessionCard({ session }) {
             </p>
           </div>
         </div>
-        <span className={clsx('text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0', cfg.cls)}>
-          {cfg.label}
-        </span>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {session.status === 'BILLED' && session.billing_order?.customer_phone && (
+            <button
+              onClick={() => sendWhatsApp(session.billing_order)}
+              title="Send bill on WhatsApp"
+              className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
+            >
+              <MessageCircle size={15} />
+            </button>
+          )}
+          <span className={clsx('text-xs px-2 py-0.5 rounded-full font-semibold', cfg.cls)}>
+            {cfg.label}
+          </span>
+        </div>
       </div>
+
+      {session.billing_order?.customer_name || session.billing_order?.customer_phone ? (
+        <p className="text-xs text-gray-500 mb-3 flex items-center gap-1.5">
+          <span className="font-medium">{session.billing_order.customer_name || '—'}</span>
+          {session.billing_order.customer_phone && (
+            <span className="text-gray-400">&middot; {session.billing_order.customer_phone}</span>
+          )}
+        </p>
+      ) : null}
 
       <div className="space-y-2">
         {batches.length === 0 && (
@@ -265,11 +310,22 @@ function CounterOrderCard({ order }) {
           <p className="font-mono text-sm font-bold text-gray-800">{order.order_number}</p>
           <p className="text-xs text-gray-400">{fmt(order.created_at)} &middot; by {order.biller_name}</p>
         </div>
-        <div className="text-right flex-shrink-0">
-          <p className="text-sm font-bold text-green-600">₹{order.total_amount.toFixed(0)}</p>
-          <span className="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-semibold">
-            Counter
-          </span>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {order.customer_phone && (
+            <button
+              onClick={() => sendWhatsApp(order)}
+              title="Send bill on WhatsApp"
+              className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
+            >
+              <MessageCircle size={15} />
+            </button>
+          )}
+          <div className="text-right">
+            <p className="text-sm font-bold text-green-600">₹{order.total_amount.toFixed(0)}</p>
+            <span className="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-semibold">
+              Counter
+            </span>
+          </div>
         </div>
       </div>
 
