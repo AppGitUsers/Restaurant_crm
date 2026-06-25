@@ -90,6 +90,7 @@ export default function App() {
         <Route index                      element={<BillingPage />} />
         <Route path="tables"              element={<TablesGridPage />} />
         <Route path="tables/:sessionId"   element={<TableBillPage />} />
+        <Route path="customers"           element={<CustomersPage />} />
       </Route>
 
       {/* Public — Customer QR order page (no auth) */}
