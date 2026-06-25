@@ -31,11 +31,11 @@ class OrderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = Order
-        fields = ['id', 'order_number', 'biller', 'biller_name',
+        fields = ['id', 'order_number', 'share_token', 'biller', 'biller_name',
                   'customer_name', 'customer_phone', 'status', 'payment_method',
                   'subtotal', 'discount', 'tax_percent', 'tax_amount', 'total_amount',
                   'notes', 'items', 'created_at', 'updated_at']
-        read_only_fields = ['order_number', 'subtotal', 'tax_amount', 'total_amount']
+        read_only_fields = ['order_number', 'share_token', 'subtotal', 'tax_amount', 'total_amount']
 
     def get_biller_name(self, obj):
         if obj.biller:

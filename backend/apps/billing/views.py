@@ -1,6 +1,9 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
+from django.shortcuts import get_object_or_404
 from apps.accounts.permissions import IsAdmin, IsAdminOrBiller
 from .models import Order, OrderItem
 from .serializers import OrderSerializer, OrderCreateSerializer
@@ -76,3 +79,26 @@ class OrderViewSet(viewsets.ModelViewSet):
         response = HttpResponse(pdf_data, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="bill_{order.order_number}.pdf"'
         return response
+
+
+class PublicReceiptView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, share_token):
+        order = get_object_or_404(
+            Order.objects
+            .select_related('biller', 'table_session__table')
+            .prefetch_related('items__food_item'),
+            share_token=share_token,
+            status=Order.Status.PAID,
+        )
+        from apps.settings_app.models import RestaurantSettings
+        settings = RestaurantSettings.get_settings()
+        data = OrderSerializer(order).data
+        data['restaurant_name'] = settings.company_name
+        data['table_number'] = (
+            order.table_session.table.number
+            if order.table_session_id and order.table_session
+            else None
+        )
+        return Response(data)

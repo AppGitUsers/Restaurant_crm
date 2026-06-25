@@ -1,8 +1,11 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import OrderViewSet
+from .views import OrderViewSet, PublicReceiptView
 
 router = DefaultRouter()
 router.register('orders', OrderViewSet, basename='order')
 
-urlpatterns = [path('', include(router.urls))]
+urlpatterns = [
+    path('', include(router.urls)),
+    path('receipt/<uuid:share_token>/', PublicReceiptView.as_view(), name='public-receipt'),
+]

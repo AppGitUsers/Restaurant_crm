@@ -625,6 +625,8 @@ function BillModal({ order, onClose }) {
     lines.push(`Payment: ${order.payment_method}`)
     lines.push(``)
     lines.push(`Thank you for visiting us! 🙏`)
+    if (order.share_token)
+      lines.push(`\n📄 View your bill: ${window.location.origin}/receipt/${order.share_token}`)
 
     window.open(
       `https://wa.me/${phone}?text=${encodeURIComponent(lines.join('\n'))}`,

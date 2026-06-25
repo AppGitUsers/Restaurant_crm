@@ -32,7 +32,7 @@ const SESSION_FILTERS = [
   { key: 'BILLED', label: 'Billed' },
 ]
 
-function sendWhatsApp({ order_number, customer_phone, items, subtotal, discount, tax_amount, total_amount, payment_method }) {
+function sendWhatsApp({ order_number, customer_phone, items, subtotal, discount, tax_amount, total_amount, payment_method, share_token }) {
   const digits = (customer_phone || '').replace(/\D/g, '')
   const phone  = digits.length === 10 ? `91${digits}` : digits
   const lines  = []
@@ -54,6 +54,8 @@ function sendWhatsApp({ order_number, customer_phone, items, subtotal, discount,
   lines.push(`Payment: ${payment_method}`)
   lines.push(``)
   lines.push(`Thank you for visiting us! 🙏`)
+  if (share_token)
+    lines.push(`\n📄 View your bill: ${window.location.origin}/receipt/${share_token}`)
   window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank')
 }
 

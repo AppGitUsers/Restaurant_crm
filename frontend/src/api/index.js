@@ -205,5 +205,6 @@ export const tablesAPI = {
     menu:         (token)            => publicClient.get(`/public/table/${token}/menu/`),
     order:        (token, data)      => publicClient.post(`/public/table/${token}/order/`, data),
     cancelBatch:  (token, batchId)   => publicClient.post(`/public/table/${token}/orders/${batchId}/cancel/`),
+    receipt:      (shareToken)       => publicClient.get(`/receipt/${shareToken}/`),
   },
 }

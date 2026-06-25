@@ -982,6 +982,7 @@ class TodaySessionsView(APIView):
             return {
                 'id':             o.id,
                 'order_number':   o.order_number,
+                'share_token':    str(o.share_token),
                 'customer_name':  o.customer_name,
                 'customer_phone': o.customer_phone,
                 'payment_method': o.payment_method,
@@ -1009,6 +1010,7 @@ class TodaySessionsView(APIView):
                 return None
             return {
                 'order_number':   o.order_number,
+                'share_token':    str(o.share_token),
                 'customer_name':  o.customer_name,
                 'customer_phone': o.customer_phone,
                 'payment_method': o.payment_method,

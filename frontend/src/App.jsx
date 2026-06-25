@@ -30,7 +30,8 @@ import AttendanceKiosk  from '@/pages/attendance/AttendanceKiosk'
 import KitchenPage from '@/pages/kitchen/KitchenPage'
 
 // Customer QR order
-import QROrderPage from '@/pages/order/QROrderPage'
+import QROrderPage  from '@/pages/order/QROrderPage'
+import ReceiptPage  from '@/pages/public/ReceiptPage'
 
 const roleHome = role => {
   if (role === 'BILLER')  return '/billing'
@@ -95,8 +96,9 @@ export default function App() {
         <Route path="today-orders"        element={<TodayOrdersPage />} />
       </Route>
 
-      {/* Public — Customer QR order page (no auth) */}
-      <Route path="/order/:token" element={<QROrderPage />} />
+      {/* Public — no auth required */}
+      <Route path="/order/:token"    element={<QROrderPage />} />
+      <Route path="/receipt/:token"  element={<ReceiptPage />} />
 
       {/* Kitchen routes */}
       <Route path="/kitchen" element={

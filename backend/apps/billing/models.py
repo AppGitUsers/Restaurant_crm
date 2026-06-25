@@ -1,4 +1,5 @@
 import datetime
+import uuid
 from django.db import models, transaction as db_transaction
 from apps.menu.models import FoodItem
 from apps.accounts.models import CustomUser
@@ -40,6 +41,7 @@ class Order(models.Model):
     tax_amount       = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total_amount     = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     notes            = models.TextField(blank=True)
+    share_token      = models.UUIDField(default=uuid.uuid4, unique=True)
     table_session    = models.OneToOneField(
         'tables.TableSession',
         on_delete=models.SET_NULL,
