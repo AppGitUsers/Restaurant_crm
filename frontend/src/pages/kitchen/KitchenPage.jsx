@@ -154,6 +154,7 @@ function ActiveOrders({ batches, pendingCount, preparingCount, advance }) {
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <p className="text-white/90 text-xs font-semibold">{meta.label}</p>
+                  <p className="text-white/70 text-xs font-mono">{format(parseISO(batch.placed_at), 'dd MMM · HH:mm')}</p>
                   <LiveTimer placedAt={batch.placed_at} />
                 </div>
               </div>
@@ -240,7 +241,7 @@ function ServedOrders() {
                   <CheckCheck size={12} /> Served
                 </span>
                 <span className="text-green-300/70 text-xs font-mono">
-                  {format(parseISO(batch.placed_at), 'HH:mm')}
+                  {format(parseISO(batch.placed_at), 'dd MMM · HH:mm')}
                 </span>
               </div>
             </div>
