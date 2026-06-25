@@ -6,7 +6,7 @@ import { PageLoader, Modal, Empty } from '@/components/ui'
 import toast from 'react-hot-toast'
 import {
   ShoppingCart, Plus, Minus, Trash2, UtensilsCrossed,
-  CheckCircle, Printer, X, Receipt, Sparkles, Check, Wand2
+  CheckCircle, Printer, X, Receipt, Sparkles, Check, Wand2, MessageCircle
 } from 'lucide-react'
 
 // ── Food card ─────────────────────────────────────────
@@ -603,10 +603,45 @@ function BillModal({ order, onClose }) {
     }
   }
 
+  const sendWhatsApp = () => {
+    const digits   = order.customer_phone.replace(/\D/g, '')
+    const phone    = digits.length === 10 ? `91${digits}` : digits
+
+    const lines = []
+    lines.push(`🧾 *Bill Receipt — ${order.order_number}*`)
+    lines.push(``)
+    lines.push(`*Items:*`)
+    order.items.forEach(item => {
+      lines.push(`• ${item.food_item_name} ×${item.quantity}  ₹${parseFloat(item.line_total).toFixed(2)}`)
+      if (item.notes) lines.push(`  ↳ ${item.notes}`)
+    })
+    lines.push(``)
+    lines.push(`Subtotal:  ₹${parseFloat(order.subtotal).toFixed(2)}`)
+    if (parseFloat(order.discount) > 0)
+      lines.push(`Discount:  -₹${parseFloat(order.discount).toFixed(2)}`)
+    lines.push(`Tax:       ₹${parseFloat(order.tax_amount).toFixed(2)}`)
+    lines.push(`*Total:    ₹${parseFloat(order.total_amount).toFixed(2)}*`)
+    lines.push(``)
+    lines.push(`Payment: ${order.payment_method}`)
+    lines.push(``)
+    lines.push(`Thank you for visiting us! 🙏`)
+
+    window.open(
+      `https://wa.me/${phone}?text=${encodeURIComponent(lines.join('\n'))}`,
+      '_blank'
+    )
+  }
+
   return (
     <Modal open={!!order} onClose={onClose} title="Bill Receipt" size="md"
       footer={<>
         <button onClick={onClose} className="btn-ghost">Close</button>
+        {order.customer_phone && (
+          <button onClick={sendWhatsApp}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white text-sm font-semibold transition-colors">
+            <MessageCircle size={15} />WhatsApp
+          </button>
+        )}
         <button onClick={downloadPdf} className="btn-primary"><Printer size={15} />Download PDF</button>
       </>}
     >

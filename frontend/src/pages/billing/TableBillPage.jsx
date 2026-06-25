@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { tablesAPI, menuAPI, customersAPI, settingsAPI } from '@/api'
 import { PageLoader, Modal, Field } from '@/components/ui'
-import { ArrowLeft, Plus, Minus, CreditCard, ChefHat, Check, Loader2 } from 'lucide-react'
+import { ArrowLeft, Plus, Minus, CreditCard, ChefHat, Check, Loader2, CheckCircle, MessageCircle } from 'lucide-react'
 import { formatDistanceToNow, parseISO, format } from 'date-fns'
 import toast from 'react-hot-toast'
 
@@ -273,6 +273,92 @@ function BillModal({ open, onClose, session, gstRate, onBill }) {
   )
 }
 
+// ── Table Bill Receipt Modal ─────────────────────────────────────────────────
+function TableBillReceiptModal({ open, onClose, receipt, session, gstRate }) {
+  if (!receipt || !session) return null
+
+  const subtotal = parseFloat(session.subtotal)
+  const disc     = parseFloat(session.discount) || 0
+  const taxable  = Math.max(0, subtotal - disc)
+  const tax      = taxable * gstRate
+  const total    = taxable + tax
+
+  const sendWhatsApp = () => {
+    const digits = receipt.phone.replace(/\D/g, '')
+    const phone  = digits.length === 10 ? `91${digits}` : digits
+
+    const lines = []
+    lines.push(`🧾 *Bill Receipt — ${receipt.orderNumber}*`)
+    lines.push(``)
+    lines.push(`*Items:*`)
+    session.batches.forEach(batch => {
+      batch.items.forEach(item => {
+        lines.push(`• ${item.food_item_name} ×${item.quantity}  ₹${parseFloat(item.line_total).toFixed(2)}`)
+        if (item.notes) lines.push(`  ↳ ${item.notes}`)
+      })
+    })
+    lines.push(``)
+    lines.push(`Subtotal:  ₹${subtotal.toFixed(2)}`)
+    if (disc > 0) lines.push(`Discount:  -₹${disc.toFixed(2)}`)
+    lines.push(`Tax:       ₹${tax.toFixed(2)}`)
+    lines.push(`*Total:    ₹${total.toFixed(2)}*`)
+    lines.push(``)
+    lines.push(`Payment: ${receipt.method}`)
+    lines.push(``)
+    lines.push(`Thank you for visiting us! 🙏`)
+
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank')
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Bill Receipt" size="md"
+      footer={<>
+        <button onClick={onClose} className="btn-ghost">Close</button>
+        {receipt.phone && (
+          <button onClick={sendWhatsApp}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white text-sm font-semibold transition-colors">
+            <MessageCircle size={15} />WhatsApp
+          </button>
+        )}
+      </>}
+    >
+      <div className="text-center mb-5">
+        <CheckCircle size={44} className="text-primary-400 mx-auto mb-2" />
+        <p className="font-bold text-lg text-gray-800">Payment Successful!</p>
+        <p className="text-sm text-gray-400">Bill No: {receipt.orderNumber}</p>
+      </div>
+
+      <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm mb-4">
+        {receipt.name  && <div className="flex justify-between"><span className="text-gray-500">Customer</span><span className="font-medium">{receipt.name}</span></div>}
+        {receipt.phone && <div className="flex justify-between"><span className="text-gray-500">Phone</span><span>{receipt.phone}</span></div>}
+        <div className="flex justify-between"><span className="text-gray-500">Payment</span><span className="badge-green">{receipt.method}</span></div>
+      </div>
+
+      <div className="space-y-2 text-sm">
+        {session.batches.map((batch, bi) =>
+          batch.items.map((item, ii) => (
+            <div key={`${bi}-${ii}`}>
+              <div className="flex justify-between">
+                <span className="text-gray-700">{item.food_item_name} × {item.quantity}</span>
+                <span className="font-medium">₹{parseFloat(item.line_total).toFixed(2)}</span>
+              </div>
+              {item.notes && <p className="text-xs text-gray-400 mt-0.5">{item.notes}</p>}
+            </div>
+          ))
+        )}
+        <div className="border-t border-gray-200 pt-2 space-y-1">
+          <div className="flex justify-between text-gray-500"><span>Subtotal</span><span>₹{subtotal.toFixed(2)}</span></div>
+          {disc > 0 && <div className="flex justify-between text-red-500"><span>Discount</span><span>-₹{disc.toFixed(2)}</span></div>}
+          <div className="flex justify-between text-gray-500"><span>Tax</span><span>₹{tax.toFixed(2)}</span></div>
+          <div className="flex justify-between font-bold text-primary-600 text-base pt-1 border-t">
+            <span>Total</span><span>₹{total.toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function TableBillPage() {
   const { sessionId } = useParams()
@@ -283,6 +369,7 @@ export default function TableBillPage() {
   const [addOpen,         setAddOpen]         = useState(false)
   const [billOpen,        setBillOpen]        = useState(false)
   const [endConfirmOpen,  setEndConfirmOpen]  = useState(false)
+  const [billReceipt,     setBillReceipt]     = useState(null) // { orderNumber, phone, name, method }
 
   const { data: settings } = useQuery({
     queryKey: ['restaurant-settings'],
@@ -300,11 +387,15 @@ export default function TableBillPage() {
 
   const billMutation = useMutation({
     mutationFn: (data) => tablesAPI.bill(sessionId, { ...data, discount }),
-    onSuccess: (res) => {
+    onSuccess: (res, variables) => {
       qc.invalidateQueries(['tables-grid'])
       qc.invalidateQueries(['table-session', sessionId])
-      toast.success(`Table ${session?.table_number} billed — Order ${res.data.order_number}`)
-      navigate('/billing/tables')
+      setBillReceipt({
+        orderNumber: res.data.order_number,
+        phone:       variables.customer_phone,
+        name:        variables.customer_name,
+        method:      variables.payment_method,
+      })
     },
     onError: () => toast.error('Billing failed. Please try again.'),
   })
@@ -457,6 +548,13 @@ export default function TableBillPage() {
         session={{ ...session, discount }}
         gstRate={gstRate}
         onBill={(data) => { setBillOpen(false); billMutation.mutate(data) }}
+      />
+      <TableBillReceiptModal
+        open={!!billReceipt}
+        onClose={() => { setBillReceipt(null); navigate('/billing/tables') }}
+        receipt={billReceipt}
+        session={session}
+        gstRate={gstRate}
       />
 
       {/* End Session confirmation modal */}
