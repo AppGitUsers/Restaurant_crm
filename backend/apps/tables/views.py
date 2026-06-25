@@ -189,6 +189,15 @@ class PublicOrderSubmitView(APIView):
                                .select_for_update()
                                .get(table=table, status=TableSession.Status.OPEN))
                 except TableSession.DoesNotExist:
+                    # If the request carries a session_key it means this device
+                    # previously belonged to a session that has since been
+                    # billed or closed.  Reject it so a stale browser from the
+                    # old party cannot sneak an order onto the newly-opened table.
+                    if provided_key:
+                        return Response(
+                            {'error': 'Your session has ended. Please refresh the page.'},
+                            status=status.HTTP_403_FORBIDDEN,
+                        )
                     try:
                         session = TableSession.objects.create(table=table)
                     except IntegrityError:
@@ -786,10 +795,11 @@ class TableSessionBillView(APIView):
             order.status = Order.Status.PAID
             order.save(update_fields=['status'])
 
-            session.discount  = discount
-            session.status    = TableSession.Status.BILLED
-            session.closed_at = timezone.now()
-            session.save(update_fields=['discount', 'status', 'closed_at'])
+            session.discount     = discount
+            session.status       = TableSession.Status.BILLED
+            session.session_key  = ''
+            session.closed_at    = timezone.now()
+            session.save(update_fields=['discount', 'status', 'session_key', 'closed_at'])
 
             session.table.is_accepting_orders = False
             session.table.save(update_fields=['is_accepting_orders'])
