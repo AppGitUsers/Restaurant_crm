@@ -361,7 +361,7 @@ function CustomerFields({ customerName, customerPhone, setCustomer }) {
       <div className="relative">
         <input
           className="input-sm pr-8"
-          placeholder="Phone (optional)"
+          placeholder="Phone * (required)"
           value={customerPhone}
           onChange={e => setCustomer(customerName, e.target.value)}
         />
@@ -725,6 +725,9 @@ export default function BillingPage() {
   const placeOrder = useMutation({
     mutationFn: async () => {
       const { items, customerName, customerPhone, paymentMethod, discount, taxPercent } = useCartStore.getState()
+      if (customerPhone.replace(/\D/g, '').length < 10) {
+        throw new Error('Phone number is required (10 digits)')
+      }
       const payload = {
         customer_name:  customerName,
         customer_phone: customerPhone,
@@ -768,6 +771,10 @@ export default function BillingPage() {
       toast.success('Order placed and paid!')
     },
     onError: (err) => {
+      if (err?.message && !err?.response) {
+        toast.error(err.message)
+        return
+      }
       const msg = err?.response?.data?.detail
         || Object.values(err?.response?.data || {})[0]
         || 'Order failed. Please try again.'

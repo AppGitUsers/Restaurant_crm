@@ -189,7 +189,16 @@ function BillModal({ open, onClose, session, gstRate, onBill }) {
       footer={
         <>
           <button onClick={onClose} className="btn-ghost">Cancel</button>
-          <button onClick={() => onBill({ payment_method: method, customer_name: name, customer_phone: phone })} className="btn-primary">
+          <button
+            onClick={() => {
+              if (phone.replace(/\D/g, '').length < 10) {
+                toast.error('Phone number is required (10 digits)')
+                return
+              }
+              onBill({ payment_method: method, customer_name: name, customer_phone: phone })
+            }}
+            className="btn-primary"
+          >
             <CreditCard size={14} /> Confirm ₹{total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </button>
         </>
@@ -226,7 +235,7 @@ function BillModal({ open, onClose, session, gstRate, onBill }) {
         {/* Phone first — triggers lookup */}
         <div className="space-y-2">
           <div className="relative">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Phone (optional)</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Phone <span className="text-red-500">*</span></label>
             <input
               className="input"
               value={phone}
