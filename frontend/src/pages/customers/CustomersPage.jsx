@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { customersAPI } from '@/api'
+import { customersAPI, billingAPI } from '@/api'
 import { PageLoader, Modal, SearchBar, StatusBadge, Field, Empty } from '@/components/ui'
 import toast from 'react-hot-toast'
-import { Plus, Edit2, Users, Star, Phone, ShoppingBag } from 'lucide-react'
+import { Plus, Edit2, Users, Star, Phone, ShoppingBag, MessageCircle, Loader2 } from 'lucide-react'
 
 export default function CustomersPage() {
   const qc = useQueryClient()
@@ -22,6 +22,43 @@ export default function CustomersPage() {
 
   const openCreate = () => { setSel(null); setForm({ name: '', phone: '', email: '', address: '', notes: '' }); setModal(true) }
   const openEdit   = c => { setSel(c); setForm({ name: c.name, phone: c.phone, email: c.email, address: c.address, notes: c.notes }); setModal(true) }
+
+  const [sendingOrderId, setSendingOrderId] = useState(null)
+
+  const sendWhatsApp = async (visit, customerPhone) => {
+    if (!visit.order_id) { toast.error('Order details not found'); return }
+    setSendingOrderId(visit.order_id)
+    try {
+      const { data: order } = await billingAPI.orders.get(visit.order_id)
+      const digits = (customerPhone || '').replace(/\D/g, '')
+      const phone  = digits.length === 10 ? `91${digits}` : digits
+
+      const lines = []
+      lines.push(`🧾 *Bill Receipt — ${order.order_number}*`)
+      lines.push(``)
+      lines.push(`*Items:*`)
+      order.items.forEach(item => {
+        lines.push(`• ${item.food_item_name} ×${item.quantity}  ₹${parseFloat(item.line_total).toFixed(2)}`)
+        if (item.notes) lines.push(`  ↳ ${item.notes}`)
+      })
+      lines.push(``)
+      lines.push(`Subtotal:  ₹${parseFloat(order.subtotal).toFixed(2)}`)
+      if (parseFloat(order.discount) > 0)
+        lines.push(`Discount:  -₹${parseFloat(order.discount).toFixed(2)}`)
+      lines.push(`Tax:       ₹${parseFloat(order.tax_amount).toFixed(2)}`)
+      lines.push(`*Total:    ₹${parseFloat(order.total_amount).toFixed(2)}*`)
+      lines.push(``)
+      lines.push(`Payment: ${order.payment_method}`)
+      lines.push(``)
+      lines.push(`Thank you for visiting us! 🙏`)
+
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank')
+    } catch {
+      toast.error('Could not load order details')
+    } finally {
+      setSendingOrderId(null)
+    }
+  }
 
   const TAG_COLORS = { HIGH: 'badge-green', MEDIUM: 'badge-gold', LOW: 'badge-gray', NEW: 'badge-blue' }
   const customers  = data || []
@@ -98,13 +135,25 @@ export default function CustomersPage() {
             </div>
             <div className="table-container">
               <table className="table">
-                <thead><tr><th>Order #</th><th>Amount</th><th>Date</th></tr></thead>
+                <thead><tr><th>Order #</th><th>Amount</th><th>Date</th><th></th></tr></thead>
                 <tbody>
                   {(detailModal.visits || []).map((v, i) => (
                     <tr key={i}>
                       <td className="font-mono text-sm">{v.order_number}</td>
                       <td className="font-semibold text-primary-600">₹{parseFloat(v.amount_spent).toFixed(2)}</td>
                       <td className="text-gray-400">{new Date(v.visited_at).toLocaleDateString()}</td>
+                      <td>
+                        <button
+                          onClick={() => sendWhatsApp(v, detailModal.phone)}
+                          disabled={sendingOrderId === v.order_id}
+                          className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 disabled:opacity-40 transition-colors"
+                          title="Send bill on WhatsApp"
+                        >
+                          {sendingOrderId === v.order_id
+                            ? <Loader2 size={15} className="animate-spin" />
+                            : <MessageCircle size={15} />}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   {(detailModal.visits || []).length === 0 && (
