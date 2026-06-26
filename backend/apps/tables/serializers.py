@@ -158,4 +158,5 @@ class TableSerializer(serializers.ModelSerializer):
                 'item_count': s.item_count,
             }
             for s in sessions
+            if s.item_count > 0
         ]
