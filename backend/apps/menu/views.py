@@ -50,7 +50,8 @@ class FoodItemViewSet(viewsets.ModelViewSet):
                     'combo_components__component',
                 )
                 .all())
-    parser_classes  = [MultiPartParser, FormParser, JSONParser]
+    parser_classes   = [MultiPartParser, FormParser, JSONParser]
+    pagination_class = None
     filterset_fields = ['food_type', 'is_available', 'is_active']
     search_fields    = ['name', 'description']
     ordering_fields  = ['name', 'price', 'makeable_count', 'created_at']
