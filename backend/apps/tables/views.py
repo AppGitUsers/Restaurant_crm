@@ -190,12 +190,15 @@ class PublicOrderSubmitView(APIView):
                                .get(table=table, status=TableSession.Status.OPEN))
                 except TableSession.DoesNotExist:
                     # If the request carries a session_key it means this device
-                    # previously belonged to a session that has since been
-                    # billed or closed.  Reject it so a stale browser from the
-                    # old party cannot sneak an order onto the newly-opened table.
+                    # previously belonged to a session that has since been billed
+                    # or closed.  Reject it so a stale browser from the old party
+                    # cannot sneak an order onto the newly-opened table.
+                    # Note: a returning customer who scans the QR fresh will have
+                    # their stale key cleared by the frontend on page load before
+                    # they ever reach this point.
                     if provided_key:
                         return Response(
-                            {'error': 'Your session has ended. Please refresh the page.'},
+                            {'error': 'Your session has ended. Please scan the QR code again.'},
                             status=status.HTTP_403_FORBIDDEN,
                         )
                     try:

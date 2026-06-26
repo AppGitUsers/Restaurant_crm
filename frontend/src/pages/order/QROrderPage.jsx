@@ -799,6 +799,20 @@ export default function QROrderPage() {
 
   const categoryRefs   = useRef({})
   const notifiedServed = useRef(new Set())      // batch IDs already toasted as SERVED
+  const keyChecked     = useRef(false)          // cleared stale key at most once per page load
+
+  // On the first API response after a fresh page load (i.e. the QR was just
+  // scanned), clear any stored key if the session is no longer active.
+  // This lets a returning customer order again without getting blocked.
+  // Subsequent polls do NOT clear the key — that would let a stale open tab
+  // also clear its key and bypass the backend protection.
+  useEffect(() => {
+    if (!data || keyChecked.current) return
+    keyChecked.current = true
+    if (!data.has_active_session && getKey(token)) {
+      clearKey(token)
+    }
+  }, [data, token])
   const categories     = data?.categories || []
   const gstRate        = parseFloat(data?.gst_rate ?? 5) / 100
   // Read-only if another device already claimed this session
@@ -914,11 +928,20 @@ export default function QROrderPage() {
       refetch()
     } catch (err) {
       const httpStatus = err?.response?.status
+      const errMsg     = err?.response?.data?.error || ''
 
-      // Table was closed by staff between the last poll and this order attempt —
-      // immediately refresh so the locked screen appears without waiting for the next poll
       if (httpStatus === 403) {
         setCartOpen(false)
+        if (errMsg.includes('session')) {
+          // Stale key — clear it so a fresh retry works
+          clearKey(token)
+          toast.error('Your session has expired. Please place your order again.')
+        } else if (errMsg.includes('claimed')) {
+          toast.error('This table is already in use. Please ask staff.')
+        } else {
+          // Table closed between poll and submit — refresh to show locked screen
+          toast.error(errMsg || 'Cannot place order right now. Please try again.')
+        }
         refetch()
         return
       }
@@ -934,7 +957,12 @@ export default function QROrderPage() {
         }))
         setCartOpen(false)
         refetch()
+        return
       }
+
+      // Any other error — show a message instead of silently failing
+      const fallback = err?.response?.data?.error || err?.response?.data?.detail || 'Could not place order. Please try again.'
+      toast.error(typeof fallback === 'string' ? fallback : 'Could not place order. Please try again.')
     } finally {
       setPlacing(false)
     }
