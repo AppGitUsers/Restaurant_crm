@@ -799,20 +799,26 @@ export default function QROrderPage() {
 
   const categoryRefs   = useRef({})
   const notifiedServed = useRef(new Set())      // batch IDs already toasted as SERVED
-  const keyChecked     = useRef(false)          // cleared stale key at most once per page load
 
-  // On the first API response after a fresh page load (i.e. the QR was just
-  // scanned), clear any stored key if the session is no longer active.
-  // This lets a returning customer order again without getting blocked.
-  // Subsequent polls do NOT clear the key — that would let a stale open tab
-  // also clear its key and bypass the backend protection.
+  // sessionStorage (not useRef) is the gate here.
+  // sessionStorage persists across page refreshes of the same tab but is
+  // cleared when a new tab opens — which is exactly what a QR scan does on
+  // mobile.  useRef would reset on every refresh, letting a stale open tab
+  // clear its own key just by pulling-to-refresh.
+  //
+  // On the very first response in a new browser tab (QR just scanned):
+  //   → no sessionStorage flag yet → if session is inactive, clear the key
+  // On any subsequent response in the same tab (refresh, background poll):
+  //   → flag already set → never clear the key again
+  const ssCheckedKey = `wls_checked_${token}`
   useEffect(() => {
-    if (!data || keyChecked.current) return
-    keyChecked.current = true
+    if (!data) return
+    if (sessionStorage.getItem(ssCheckedKey)) return   // already ran in this tab
+    sessionStorage.setItem(ssCheckedKey, '1')
     if (!data.has_active_session && getKey(token)) {
       clearKey(token)
     }
-  }, [data, token])
+  }, [data, token, ssCheckedKey])
   const categories     = data?.categories || []
   const gstRate        = parseFloat(data?.gst_rate ?? 5) / 100
   // Read-only if another device already claimed this session
