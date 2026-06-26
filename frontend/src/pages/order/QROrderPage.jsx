@@ -939,9 +939,7 @@ export default function QROrderPage() {
       if (httpStatus === 403) {
         setCartOpen(false)
         if (errMsg.includes('session')) {
-          // Stale key — clear it so a fresh retry works
-          clearKey(token)
-          toast.error('Your session has expired. Please place your order again.')
+          toast.error('Your session has ended. Please scan the QR code again.')
         } else if (errMsg.includes('claimed')) {
           toast.error('This table is already in use. Please ask staff.')
         } else {
