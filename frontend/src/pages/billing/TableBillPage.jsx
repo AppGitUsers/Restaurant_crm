@@ -429,6 +429,24 @@ export default function TableBillPage() {
   if (isLoading) return <PageLoader />
   if (!session)  return <div className="p-8 text-gray-400 text-center">Session not found.</div>
 
+  if (session.status === 'OPEN' && session.item_count === 0) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-4 text-center px-6">
+        <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
+          <ChefHat size={32} className="text-green-500" />
+        </div>
+        <div>
+          <p className="font-bold text-gray-800 text-lg">Table {session.table_number}</p>
+          <p className="text-gray-400 text-sm mt-1">No items yet — all orders were cancelled.</p>
+          <p className="text-gray-400 text-xs mt-0.5">Waiting for the customer to place a new order.</p>
+        </div>
+        <button onClick={() => navigate('/billing/tables')} className="btn-ghost mt-2">
+          <ArrowLeft size={15} /> Back to Tables
+        </button>
+      </div>
+    )
+  }
+
   const isBilled = session.status === 'BILLED'
   const subtotal = parseFloat(session.subtotal)
   const disc     = parseFloat(discount) || 0

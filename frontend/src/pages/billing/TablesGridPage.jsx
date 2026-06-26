@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { tablesAPI } from '@/api'
 import { PageLoader } from '@/components/ui'
 import { formatDistanceToNow, parseISO } from 'date-fns'
-import { Users, Clock, RefreshCw, AlertCircle, Unlock, Lock } from 'lucide-react'
+import { Users, Clock, RefreshCw, AlertCircle, Unlock } from 'lucide-react'
 
 export default function TablesGridPage() {
   const navigate  = useNavigate()
@@ -122,7 +122,7 @@ export default function TablesGridPage() {
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
           {tables.map(table => {
             const session    = table.active_session
-            const isOccupied = !!session
+            const isOccupied = !!session && session.item_count > 0
 
             if (!isOccupied) {
               const isReady   = table.is_accepting_orders
