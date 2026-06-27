@@ -58,30 +58,54 @@ function parseNotes(notes) {
   return { components, addons }
 }
 
-// ── PIN confirmation modal ────────────────────────────────────────────────────
-function PinModal({ title, description, onConfirm, onClose, loading }) {
-  const [pin, setPin] = useState('')
-  const inputRef      = useRef(null)
+// ── Cancel item modal (with restore-stock toggle + PIN) ───────────────────────
+function CancelItemModal({ item, onConfirm, onClose, loading }) {
+  const [pin,          setPin]          = useState('')
+  const [restoreStock, setRestoreStock] = useState(false)
+  const inputRef                        = useRef(null)
 
   useEffect(() => { inputRef.current?.focus() }, [])
 
-  const submit = () => { if (!loading) onConfirm(pin) }
+  const submit = () => { if (!loading) onConfirm(pin, restoreStock) }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
       <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Lock size={16} className="text-red-400" />
-            <h3 className="font-bold text-white text-lg">{title}</h3>
+            <Trash2 size={16} className="text-red-400" />
+            <h3 className="font-bold text-white text-lg">Cancel Item</h3>
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-white">
-            <X size={18} />
-          </button>
+          <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
         </div>
 
-        {description && <p className="text-gray-400 text-sm">{description}</p>}
+        <p className="text-gray-400 text-sm">
+          Cancelling <span className="text-white font-semibold">{item.food_item_name}</span> ×{item.quantity}.
+          The customer will be notified.
+        </p>
 
+        {/* Restore stock toggle */}
+        <button
+          onClick={() => setRestoreStock(s => !s)}
+          className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors
+            ${restoreStock
+              ? 'bg-green-900/40 border-green-700 text-green-300'
+              : 'bg-gray-800 border-gray-700 text-gray-400'}`}
+        >
+          <span className="text-sm font-medium">Restore stock to inventory?</span>
+          <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0
+            ${restoreStock ? 'bg-green-500' : 'bg-gray-600'}`}>
+            <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all
+              ${restoreStock ? 'left-5' : 'left-0.5'}`} />
+          </div>
+        </button>
+        <p className="text-xs text-gray-600 -mt-2">
+          {restoreStock
+            ? 'Stock will be added back — use this if the item was never started.'
+            : 'Stock stays deducted — use this if ingredients were already used or wasted.'}
+        </p>
+
+        {/* PIN */}
         <div>
           <label className="text-xs text-gray-500 mb-1 block">Staff PIN</label>
           <input
@@ -98,12 +122,10 @@ function PinModal({ title, description, onConfirm, onClose, loading }) {
         </div>
 
         <div className="flex gap-3">
-          <button
-            onClick={onClose}
+          <button onClick={onClose}
             className="flex-1 py-2.5 rounded-xl border border-gray-700 text-gray-400 hover:text-white
-                       hover:border-gray-500 transition-colors font-semibold"
-          >
-            Cancel
+                       hover:border-gray-500 transition-colors font-semibold">
+            Back
           </button>
           <button
             onClick={submit}
@@ -111,7 +133,7 @@ function PinModal({ title, description, onConfirm, onClose, loading }) {
             className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold
                        transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {loading ? <Loader2 size={16} className="animate-spin" /> : 'Confirm'}
+            {loading ? <Loader2 size={16} className="animate-spin" /> : 'Cancel Item'}
           </button>
         </div>
       </div>
@@ -489,7 +511,7 @@ export default function KitchenPage() {
   })
 
   const cancelMutation = useMutation({
-    mutationFn: ({ itemId, pin }) => tablesAPI.kitchen.cancelItem(itemId, pin),
+    mutationFn: ({ itemId, pin, restoreStock }) => tablesAPI.kitchen.cancelItem(itemId, pin, restoreStock),
     onSuccess: () => {
       toast.success('Item cancelled and customer notified.')
       setCancelTarget(null)
@@ -573,14 +595,13 @@ export default function KitchenPage() {
         : <ServedOrders onCancelItem={setCancelTarget} />
       }
 
-      {/* Cancel item PIN modal */}
+      {/* Cancel item modal */}
       {cancelTarget && (
-        <PinModal
-          title="Cancel Item"
-          description={`Cancel "${cancelTarget.food_item_name}" ×${cancelTarget.quantity}? Stock will be restored and the customer will be notified.`}
+        <CancelItemModal
+          item={cancelTarget}
           loading={cancelMutation.isPending}
           onClose={() => setCancelTarget(null)}
-          onConfirm={(pin) => cancelMutation.mutate({ itemId: cancelTarget.id, pin })}
+          onConfirm={(pin, restoreStock) => cancelMutation.mutate({ itemId: cancelTarget.id, pin, restoreStock })}
         />
       )}
 

@@ -622,11 +622,13 @@ def _reverse_item_stock(item, qty_to_reverse):
 
 
 class KitchenCancelItemView(APIView):
-    """Kitchen cancels a single item from any batch (any status). Reverses stock, notifies customer."""
+    """Kitchen cancels a single item. Optionally restores stock when restore_stock=true."""
     permission_classes = [IsAdminOrBillerOrKitchen]
 
     def post(self, request, item_id):
-        pin = request.data.get('pin', '')
+        pin           = request.data.get('pin', '')
+        restore_stock = bool(request.data.get('restore_stock', False))
+
         if not _validate_kitchen_pin(pin):
             return Response({'error': 'Incorrect PIN.'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -646,7 +648,8 @@ class KitchenCancelItemView(APIView):
             if item.cancelled_by_kitchen:
                 return Response({'error': 'Item already cancelled.'}, status=status.HTTP_400_BAD_REQUEST)
 
-            _reverse_item_stock(item, item.quantity)
+            if restore_stock:
+                _reverse_item_stock(item, item.quantity)
 
             item.cancelled_by_kitchen = True
             item.cancelled_at         = timezone.now()
@@ -658,14 +661,15 @@ class KitchenCancelItemView(APIView):
                 message=f"Sorry, {item_name} ×{item.quantity} could not be prepared and has been removed from your order.",
             )
 
-        try:
-            from apps.menu.models import FoodItem as FI
-            for food in FI.objects.filter(is_active=True, is_combo=False):
-                food.update_makeable_count()
-            for food in FI.objects.filter(is_active=True, is_combo=True):
-                food.update_makeable_count()
-        except Exception:
-            pass
+        if restore_stock:
+            try:
+                from apps.menu.models import FoodItem as FI
+                for food in FI.objects.filter(is_active=True, is_combo=False):
+                    food.update_makeable_count()
+                for food in FI.objects.filter(is_active=True, is_combo=True):
+                    food.update_makeable_count()
+            except Exception:
+                pass
 
         return Response({'message': 'Item cancelled.', 'item_id': item_id})
 

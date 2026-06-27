@@ -198,7 +198,7 @@ export const tablesAPI = {
     batches:       ()                       => client.get('/kitchen/batches/'),
     servedBatches: ()                       => client.get('/kitchen/batches/?served=true'),
     updateStatus:  (id, status)             => client.patch(`/kitchen/batches/${id}/`, { status }),
-    cancelItem:    (itemId, pin)            => client.post(`/kitchen/items/${itemId}/cancel/`, { pin }),
+    cancelItem:    (itemId, pin, restoreStock) => client.post(`/kitchen/items/${itemId}/cancel/`, { pin, restore_stock: restoreStock }),
     reduceItem:    (itemId, newQty, pin)    => client.post(`/kitchen/items/${itemId}/reduce/`, { pin, new_quantity: newQty }),
   },
 
