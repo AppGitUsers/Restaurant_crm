@@ -570,13 +570,11 @@ class KitchenBatchUpdateView(APIView):
         return Response(TableOrderBatchSerializer(batch).data)
 
 
-def _validate_kitchen_pin(pin):
-    """Returns True if pin matches the configured kitchen_cancel_pin, or if no pin is set."""
-    from apps.settings_app.models import RestaurantSettings
-    configured = RestaurantSettings.get_settings().kitchen_cancel_pin
-    if not configured:
-        return True
-    return pin == configured
+def _validate_kitchen_pin(pin, user):
+    """Returns True if pin matches the logged-in user's account password."""
+    if not pin:
+        return False
+    return user.check_password(pin)
 
 
 def _reverse_item_stock(item, qty_to_reverse):
@@ -629,7 +627,7 @@ class KitchenCancelItemView(APIView):
         pin           = request.data.get('pin', '')
         restore_stock = bool(request.data.get('restore_stock', False))
 
-        if not _validate_kitchen_pin(pin):
+        if not _validate_kitchen_pin(pin, request.user):
             return Response({'error': 'Incorrect PIN.'}, status=status.HTTP_403_FORBIDDEN)
 
         with transaction.atomic():
@@ -683,7 +681,7 @@ class KitchenReduceItemView(APIView):
         new_quantity  = request.data.get('new_quantity')
         restore_stock = bool(request.data.get('restore_stock', False))
 
-        if not _validate_kitchen_pin(pin):
+        if not _validate_kitchen_pin(pin, request.user):
             return Response({'error': 'Incorrect PIN.'}, status=status.HTTP_403_FORBIDDEN)
 
         try:
