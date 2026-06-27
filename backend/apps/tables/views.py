@@ -457,7 +457,31 @@ class PublicBatchCancelView(APIView):
                     status=status.HTTP_409_CONFLICT,
                 )
 
-            # ── Reverse every OUT stock transaction created for this batch ──
+            # ── Lock all item rows — forces wait if kitchen is mid-cancel ──
+            # This guarantees we read the final cancelled_by_kitchen value
+            # even when kitchen and customer cancel at the exact same time.
+            items = list(
+                batch.items
+                .select_for_update()
+                .select_related('food_item__recipe_ingredients')
+            )
+
+            # Build a set of ingredient IDs already handled by kitchen
+            # (items where cancelled_by_kitchen=True — kitchen is final authority)
+            kitchen_handled_ingredients = {}  # {ingredient_id: qty already restored by kitchen}
+            for item in items:
+                if not item.cancelled_by_kitchen:
+                    continue
+                fi = item.food_item
+                if not fi or not fi.tracks_stock:
+                    continue
+                for ri in fi.recipe_ingredients.all():
+                    kitchen_handled_ingredients[ri.ingredient_id] = (
+                        kitchen_handled_ingredients.get(ri.ingredient_id, 0)
+                        + ri.quantity_required * item.quantity
+                    )
+
+            # ── Reverse OUT stock transactions, skipping what kitchen handled ──
             from apps.inventory.models import Stock, StockTransaction
 
             out_txs = list(
@@ -466,29 +490,37 @@ class PublicBatchCancelView(APIView):
                 .select_related('ingredient')
             )
 
-            if out_txs:
-                ingredient_ids = sorted({tx.ingredient_id for tx in out_txs})
+            # Filter to only transactions that kitchen hasn't already handled
+            restorable_txs = []
+            for tx in out_txs:
+                already_done = kitchen_handled_ingredients.get(tx.ingredient_id, 0)
+                restore_qty  = tx.quantity - already_done
+                if restore_qty > 0:
+                    restorable_txs.append((tx, restore_qty))
+
+            if restorable_txs:
+                ingredient_ids = sorted({tx.ingredient_id for tx, _ in restorable_txs})
                 locked_stocks  = {
                     s.ingredient_id: s
                     for s in Stock.objects
                     .select_for_update()
                     .filter(ingredient_id__in=ingredient_ids)
                 }
-                for tx in out_txs:
+                for tx, restore_qty in restorable_txs:
                     stock = locked_stocks.get(tx.ingredient_id)
                     if stock:
-                        stock.current_quantity += tx.quantity
+                        stock.current_quantity += restore_qty
                         stock.save(update_fields=['current_quantity'])
 
                 StockTransaction.objects.bulk_create([
                     StockTransaction(
                         ingredient=tx.ingredient,
                         tx_type='IN',
-                        quantity=tx.quantity,
+                        quantity=restore_qty,
                         reference=f"cancel_batch:{batch.id}",
                         note=f"Cancelled order — reversed: {tx.note}",
                     )
-                    for tx in out_txs
+                    for tx, restore_qty in restorable_txs
                 ])
 
             batch.delete()
