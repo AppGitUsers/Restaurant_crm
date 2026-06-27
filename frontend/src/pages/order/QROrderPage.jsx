@@ -411,7 +411,8 @@ function MyOrders({ orders, gstRate, token, onRefresh }) {
   if (!orders || orders.length === 0) return null
 
   const grandSubtotal = orders.reduce((sum, batch) =>
-    sum + batch.items.reduce((s, it) => s + it.quantity * (it.unit_price + it.addon_unit_price), 0), 0)
+    sum + batch.items.reduce((s, it) =>
+      it.cancelled_by_kitchen ? s : s + it.quantity * (it.unit_price + it.addon_unit_price), 0), 0)
   const grandTax   = grandSubtotal * gstRate
   const grandTotal = grandSubtotal + grandTax
   const gstPct     = (gstRate * 100 % 1 === 0)
@@ -429,7 +430,8 @@ function MyOrders({ orders, gstRate, token, onRefresh }) {
         {orders.map((batch, idx) => {
           const meta     = STATUS_META[batch.status] || STATUS_META.PENDING
           const Icon     = meta.icon
-          const subtotal = batch.items.reduce((s, it) => s + it.quantity * (it.unit_price + it.addon_unit_price), 0)
+          const subtotal = batch.items.reduce((s, it) =>
+            it.cancelled_by_kitchen ? s : s + it.quantity * (it.unit_price + it.addon_unit_price), 0)
 
           return (
             <div key={batch.id} className={`rounded-2xl border ${meta.border} ${meta.bg} overflow-hidden`}>
@@ -450,22 +452,32 @@ function MyOrders({ orders, gstRate, token, onRefresh }) {
               {/* Items */}
               <div className="px-4 py-2 space-y-2">
                 {batch.items.map((it, i) => {
+                  const cancelled = it.cancelled_by_kitchen
                   const lineTotal = it.quantity * (it.unit_price + it.addon_unit_price)
                   return (
-                    <div key={i} className="flex items-start justify-between gap-2">
+                    <div key={i} className={`flex items-start justify-between gap-2 ${cancelled ? 'opacity-60' : ''}`}>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           {it.is_custom && <Wand2 size={11} className="text-amber-500 flex-shrink-0" />}
-                          <p className="text-sm font-medium text-gray-800 leading-tight">{it.name}</p>
+                          <p className={`text-sm font-medium leading-tight ${cancelled ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+                            {it.name}
+                          </p>
                           <span className="text-xs text-gray-400">×{it.quantity}</span>
+                          {cancelled && (
+                            <span className="text-xs bg-red-100 text-red-500 px-2 py-0.5 rounded-full font-semibold whitespace-nowrap">
+                              Cancelled
+                            </span>
+                          )}
                         </div>
-                        {it.addon_unit_price > 0 && (
+                        {!cancelled && it.addon_unit_price > 0 && (
                           <p className="text-xs text-gray-400 mt-0.5">
                             {rupees(it.unit_price)} + {rupees(it.addon_unit_price)} add-ons
                           </p>
                         )}
                       </div>
-                      <span className="text-sm font-semibold text-gray-700 flex-shrink-0">{rupees(lineTotal)}</span>
+                      <span className={`text-sm font-semibold flex-shrink-0 ${cancelled ? 'line-through text-red-300' : 'text-gray-700'}`}>
+                        {rupees(lineTotal)}
+                      </span>
                     </div>
                   )
                 })}

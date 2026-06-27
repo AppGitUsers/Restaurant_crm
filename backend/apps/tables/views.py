@@ -679,8 +679,9 @@ class KitchenReduceItemView(APIView):
     permission_classes = [IsAdminOrBillerOrKitchen]
 
     def post(self, request, item_id):
-        pin          = request.data.get('pin', '')
-        new_quantity = request.data.get('new_quantity')
+        pin           = request.data.get('pin', '')
+        new_quantity  = request.data.get('new_quantity')
+        restore_stock = bool(request.data.get('restore_stock', False))
 
         if not _validate_kitchen_pin(pin):
             return Response({'error': 'Incorrect PIN.'}, status=status.HTTP_403_FORBIDDEN)
@@ -717,7 +718,8 @@ class KitchenReduceItemView(APIView):
             qty_diff  = item.quantity - new_quantity
             item_name = item.food_item.name if item.food_item_id else (item.custom_name or 'Custom Item')
 
-            _reverse_item_stock(item, qty_diff)
+            if restore_stock:
+                _reverse_item_stock(item, qty_diff)
 
             item.quantity = new_quantity
             item.save(update_fields=['quantity'])
@@ -727,14 +729,15 @@ class KitchenReduceItemView(APIView):
                 message=f"Sorry, {item_name} quantity reduced from {item.quantity + qty_diff} to {new_quantity} — only {new_quantity} available.",
             )
 
-        try:
-            from apps.menu.models import FoodItem as FI
-            for food in FI.objects.filter(is_active=True, is_combo=False):
-                food.update_makeable_count()
-            for food in FI.objects.filter(is_active=True, is_combo=True):
-                food.update_makeable_count()
-        except Exception:
-            pass
+        if restore_stock:
+            try:
+                from apps.menu.models import FoodItem as FI
+                for food in FI.objects.filter(is_active=True, is_combo=False):
+                    food.update_makeable_count()
+                for food in FI.objects.filter(is_active=True, is_combo=True):
+                    food.update_makeable_count()
+            except Exception:
+                pass
 
         return Response({'message': 'Quantity reduced.', 'item_id': item_id, 'new_quantity': new_quantity})
 

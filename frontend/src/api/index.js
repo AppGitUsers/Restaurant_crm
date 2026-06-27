@@ -199,7 +199,7 @@ export const tablesAPI = {
     servedBatches: ()                       => client.get('/kitchen/batches/?served=true'),
     updateStatus:  (id, status)             => client.patch(`/kitchen/batches/${id}/`, { status }),
     cancelItem:    (itemId, pin, restoreStock) => client.post(`/kitchen/items/${itemId}/cancel/`, { pin, restore_stock: restoreStock }),
-    reduceItem:    (itemId, newQty, pin)    => client.post(`/kitchen/items/${itemId}/reduce/`, { pin, new_quantity: newQty }),
+    reduceItem:    (itemId, newQty, pin, restoreStock) => client.post(`/kitchen/items/${itemId}/reduce/`, { pin, new_quantity: newQty, restore_stock: restoreStock }),
   },
 
   // Public (no auth) — uses publicClient so no token is attached

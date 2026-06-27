@@ -143,9 +143,10 @@ function CancelItemModal({ item, onConfirm, onClose, loading }) {
 
 // ── Reduce-quantity picker modal ──────────────────────────────────────────────
 function ReduceModal({ item, onConfirm, onClose, loading }) {
-  const [pin,      setPin]      = useState('')
-  const [newQty,   setNewQty]   = useState(item.quantity - 1)
-  const inputRef                = useRef(null)
+  const [pin,          setPin]          = useState('')
+  const [newQty,       setNewQty]       = useState(item.quantity - 1)
+  const [restoreStock, setRestoreStock] = useState(false)
+  const inputRef                        = useRef(null)
 
   useEffect(() => { inputRef.current?.focus() }, [])
 
@@ -188,6 +189,27 @@ function ReduceModal({ item, onConfirm, onClose, loading }) {
           </p>
         </div>
 
+        {/* Restore stock toggle */}
+        <button
+          onClick={() => setRestoreStock(s => !s)}
+          className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors
+            ${restoreStock
+              ? 'bg-green-900/40 border-green-700 text-green-300'
+              : 'bg-gray-800 border-gray-700 text-gray-400'}`}
+        >
+          <span className="text-sm font-medium">Restore reduced stock?</span>
+          <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0
+            ${restoreStock ? 'bg-green-500' : 'bg-gray-600'}`}>
+            <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all
+              ${restoreStock ? 'left-5' : 'left-0.5'}`} />
+          </div>
+        </button>
+        <p className="text-xs text-gray-600 -mt-2">
+          {restoreStock
+            ? 'Stock will be added back for the cancelled portion.'
+            : 'Stock stays deducted — ingredients already used or wasted.'}
+        </p>
+
         <div>
           <label className="text-xs text-gray-500 mb-1 block">Staff PIN</label>
           <input
@@ -195,7 +217,7 @@ function ReduceModal({ item, onConfirm, onClose, loading }) {
             type="password"
             value={pin}
             onChange={e => setPin(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && onConfirm(newQty, pin)}
+            onKeyDown={e => e.key === 'Enter' && onConfirm(newQty, pin, restoreStock)}
             placeholder="Enter PIN"
             className="w-full bg-gray-800 border border-gray-600 rounded-xl px-4 py-2 text-white
                        placeholder-gray-600 focus:outline-none focus:border-amber-500 text-center
@@ -210,7 +232,7 @@ function ReduceModal({ item, onConfirm, onClose, loading }) {
             Cancel
           </button>
           <button
-            onClick={() => onConfirm(newQty, pin)}
+            onClick={() => onConfirm(newQty, pin, restoreStock)}
             disabled={loading}
             className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold
                        transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
@@ -525,7 +547,7 @@ export default function KitchenPage() {
   })
 
   const reduceMutation = useMutation({
-    mutationFn: ({ itemId, newQty, pin }) => tablesAPI.kitchen.reduceItem(itemId, newQty, pin),
+    mutationFn: ({ itemId, newQty, pin, restoreStock }) => tablesAPI.kitchen.reduceItem(itemId, newQty, pin, restoreStock),
     onSuccess: () => {
       toast.success('Quantity reduced and customer notified.')
       setReduceTarget(null)
@@ -611,7 +633,7 @@ export default function KitchenPage() {
           item={reduceTarget}
           loading={reduceMutation.isPending}
           onClose={() => setReduceTarget(null)}
-          onConfirm={(newQty, pin) => reduceMutation.mutate({ itemId: reduceTarget.id, newQty, pin })}
+          onConfirm={(newQty, pin, restoreStock) => reduceMutation.mutate({ itemId: reduceTarget.id, newQty, pin, restoreStock })}
         />
       )}
     </div>
