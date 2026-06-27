@@ -950,11 +950,12 @@ class TableSessionBillView(APIView):
         customer_name  = request.data.get('customer_name', '')
         customer_phone = request.data.get('customer_phone', '')
 
-        # Collect all items from all batches in the session
+        # Collect all non-cancelled items from all batches in the session
         all_batch_items = []
         for batch in session.batches.prefetch_related('items__food_item').all():
             for item in batch.items.all():
-                all_batch_items.append(item)
+                if not item.cancelled_by_kitchen:
+                    all_batch_items.append(item)
 
         if not all_batch_items:
             return Response({'error': 'No items in this session'}, status=status.HTTP_400_BAD_REQUEST)

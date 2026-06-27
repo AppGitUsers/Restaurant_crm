@@ -505,22 +505,28 @@ export default function TableBillPage() {
               </span>
             </div>
             <div className="space-y-1.5">
-              {batch.items.map(item => (
-                <div key={item.id} className="flex items-center justify-between text-sm">
-                  <span className="text-gray-700">
-                    {item.food_item_name}
-                    {item.addon_unit_price > 0 && (
-                      <span className="text-xs text-primary-400 ml-1">(+add-ons)</span>
-                    )}
-                  </span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-gray-400">×{item.quantity}</span>
-                    <span className="font-medium text-gray-700 w-20 text-right">
-                      ₹{parseFloat(item.line_total).toLocaleString()}
+              {batch.items.map(item => {
+                const cancelled = item.cancelled_by_kitchen
+                return (
+                  <div key={item.id} className={`flex items-center justify-between text-sm ${cancelled ? 'opacity-50' : ''}`}>
+                    <span className={cancelled ? 'line-through text-gray-400' : 'text-gray-700'}>
+                      {item.food_item_name}
+                      {!cancelled && item.addon_unit_price > 0 && (
+                        <span className="text-xs text-primary-400 ml-1">(+add-ons)</span>
+                      )}
+                      {cancelled && (
+                        <span className="text-xs text-red-400 ml-1 no-underline">(Cancelled)</span>
+                      )}
                     </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-gray-400">×{item.quantity}</span>
+                      <span className={`font-medium w-20 text-right ${cancelled ? 'line-through text-red-300' : 'text-gray-700'}`}>
+                        ₹{parseFloat(item.line_total).toLocaleString()}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         ))}
