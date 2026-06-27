@@ -195,16 +195,19 @@ export const tablesAPI = {
 
   // Kitchen
   kitchen: {
-    batches:       ()          => client.get('/kitchen/batches/'),
-    servedBatches: ()          => client.get('/kitchen/batches/?served=true'),
-    updateStatus:  (id, status) => client.patch(`/kitchen/batches/${id}/`, { status }),
+    batches:       ()                       => client.get('/kitchen/batches/'),
+    servedBatches: ()                       => client.get('/kitchen/batches/?served=true'),
+    updateStatus:  (id, status)             => client.patch(`/kitchen/batches/${id}/`, { status }),
+    cancelItem:    (itemId, pin)            => client.post(`/kitchen/items/${itemId}/cancel/`, { pin }),
+    reduceItem:    (itemId, newQty, pin)    => client.post(`/kitchen/items/${itemId}/reduce/`, { pin, new_quantity: newQty }),
   },
 
   // Public (no auth) — uses publicClient so no token is attached
   public: {
-    menu:         (token)            => publicClient.get(`/public/table/${token}/menu/`),
-    order:        (token, data)      => publicClient.post(`/public/table/${token}/order/`, data),
-    cancelBatch:  (token, batchId)   => publicClient.post(`/public/table/${token}/orders/${batchId}/cancel/`),
-    receipt:      (shareToken)       => publicClient.get(`/billing/receipt/${shareToken}/`),
+    menu:             (token)            => publicClient.get(`/public/table/${token}/menu/`),
+    order:            (token, data)      => publicClient.post(`/public/table/${token}/order/`, data),
+    cancelBatch:      (token, batchId)   => publicClient.post(`/public/table/${token}/orders/${batchId}/cancel/`),
+    ackNotifications: (token, ids)       => publicClient.post(`/public/table/${token}/notifications/ack/`, { ids }),
+    receipt:          (shareToken)       => publicClient.get(`/billing/receipt/${shareToken}/`),
   },
 }

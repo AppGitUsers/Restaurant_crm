@@ -8,8 +8,13 @@ urlpatterns = [
     path('public/table/<uuid:qr_token>/orders/<int:batch_id>/cancel/', views.PublicBatchCancelView.as_view(), name='public-order-cancel'),
 
     # Kitchen — authenticated (ADMIN + BILLER + KITCHEN)
-    path('kitchen/batches/',                   views.KitchenBatchListView.as_view(),   name='kitchen-batch-list'),
-    path('kitchen/batches/<int:batch_id>/',    views.KitchenBatchUpdateView.as_view(), name='kitchen-batch-update'),
+    path('kitchen/batches/',                            views.KitchenBatchListView.as_view(),   name='kitchen-batch-list'),
+    path('kitchen/batches/<int:batch_id>/',             views.KitchenBatchUpdateView.as_view(), name='kitchen-batch-update'),
+    path('kitchen/items/<int:item_id>/cancel/',         views.KitchenCancelItemView.as_view(),  name='kitchen-item-cancel'),
+    path('kitchen/items/<int:item_id>/reduce/',         views.KitchenReduceItemView.as_view(),  name='kitchen-item-reduce'),
+
+    # Public — customer notification ack
+    path('public/table/<uuid:qr_token>/notifications/ack/', views.CustomerAckNotificationView.as_view(), name='customer-ack-notification'),
 
     # Biller — authenticated
     path('tables/today/',                                  views.TodaySessionsView.as_view(),        name='today-sessions'),

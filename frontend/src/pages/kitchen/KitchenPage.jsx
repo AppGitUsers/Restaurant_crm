@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { tablesAPI } from '@/api'
 import { parseISO, format } from 'date-fns'
 import {
   ChefHat, CheckCheck, Loader2, UtensilsCrossed,
   Timer, Sparkles, Wand2, ClipboardCheck, Flame,
+  X, Minus, Trash2, Lock,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -57,32 +58,214 @@ function parseNotes(notes) {
   return { components, addons }
 }
 
+// ── PIN confirmation modal ────────────────────────────────────────────────────
+function PinModal({ title, description, onConfirm, onClose, loading }) {
+  const [pin, setPin] = useState('')
+  const inputRef      = useRef(null)
+
+  useEffect(() => { inputRef.current?.focus() }, [])
+
+  const submit = () => { if (!loading) onConfirm(pin) }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Lock size={16} className="text-red-400" />
+            <h3 className="font-bold text-white text-lg">{title}</h3>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-white">
+            <X size={18} />
+          </button>
+        </div>
+
+        {description && <p className="text-gray-400 text-sm">{description}</p>}
+
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">Staff PIN</label>
+          <input
+            ref={inputRef}
+            type="password"
+            value={pin}
+            onChange={e => setPin(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && submit()}
+            placeholder="Enter PIN to confirm"
+            className="w-full bg-gray-800 border border-gray-600 rounded-xl px-4 py-2.5 text-white
+                       placeholder-gray-600 focus:outline-none focus:border-red-500 text-center
+                       tracking-widest text-lg font-mono"
+          />
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl border border-gray-700 text-gray-400 hover:text-white
+                       hover:border-gray-500 transition-colors font-semibold"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={loading}
+            className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold
+                       transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {loading ? <Loader2 size={16} className="animate-spin" /> : 'Confirm'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Reduce-quantity picker modal ──────────────────────────────────────────────
+function ReduceModal({ item, onConfirm, onClose, loading }) {
+  const [pin,      setPin]      = useState('')
+  const [newQty,   setNewQty]   = useState(item.quantity - 1)
+  const inputRef                = useRef(null)
+
+  useEffect(() => { inputRef.current?.focus() }, [])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Minus size={16} className="text-amber-400" />
+            <h3 className="font-bold text-white text-lg">Reduce Quantity</h3>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
+        </div>
+
+        <p className="text-gray-400 text-sm">
+          <span className="text-white font-semibold">{item.food_item_name}</span> — currently ×{item.quantity}
+        </p>
+
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">Serve how many?</label>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setNewQty(q => Math.max(1, q - 1))}
+              className="w-10 h-10 rounded-xl bg-gray-800 border border-gray-700 text-white
+                         flex items-center justify-center hover:bg-gray-700"
+            >
+              <Minus size={16} />
+            </button>
+            <span className="text-white font-extrabold text-3xl flex-1 text-center">{newQty}</span>
+            <button
+              onClick={() => setNewQty(q => Math.min(item.quantity - 1, q + 1))}
+              className="w-10 h-10 rounded-xl bg-gray-800 border border-gray-700 text-white
+                         flex items-center justify-center hover:bg-gray-700"
+            >
+              <span className="text-xl font-bold">+</span>
+            </button>
+          </div>
+          <p className="text-xs text-gray-600 text-center mt-1">
+            {item.quantity - newQty} will be cancelled
+          </p>
+        </div>
+
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">Staff PIN</label>
+          <input
+            ref={inputRef}
+            type="password"
+            value={pin}
+            onChange={e => setPin(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && onConfirm(newQty, pin)}
+            placeholder="Enter PIN"
+            className="w-full bg-gray-800 border border-gray-600 rounded-xl px-4 py-2 text-white
+                       placeholder-gray-600 focus:outline-none focus:border-amber-500 text-center
+                       tracking-widest font-mono"
+          />
+        </div>
+
+        <div className="flex gap-3">
+          <button onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl border border-gray-700 text-gray-400 hover:text-white
+                       hover:border-gray-500 transition-colors font-semibold">
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(newQty, pin)}
+            disabled={loading}
+            className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold
+                       transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {loading ? <Loader2 size={16} className="animate-spin" /> : 'Reduce'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Single item row ───────────────────────────────────────────────────────────
-function KitchenItem({ item, statusText, dimmed = false }) {
+function KitchenItem({ item, statusText, dimmed = false, onCancel, onReduce }) {
   const isCustom               = item.food_item === null
+  const isCancelled            = item.cancelled_by_kitchen
   const { components, addons } = parseNotes(item.notes)
 
   return (
-    <div className={`rounded-xl p-3 space-y-2 ${
-      isCustom
-        ? 'bg-amber-900/30 border border-amber-600/40'
-        : dimmed ? 'bg-gray-800/60' : 'bg-gray-800'
+    <div className={`rounded-xl p-3 space-y-2 relative ${
+      isCancelled
+        ? 'bg-gray-800/30 border border-gray-700/40 opacity-50'
+        : isCustom
+          ? 'bg-amber-900/30 border border-amber-600/40'
+          : dimmed ? 'bg-gray-800/60' : 'bg-gray-800'
     }`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
-          {isCustom && <Wand2 size={13} className="text-amber-400 flex-shrink-0 mt-0.5" />}
+          {isCustom && !isCancelled && <Wand2 size={13} className="text-amber-400 flex-shrink-0 mt-0.5" />}
           <span className={`font-bold text-lg leading-tight ${
-            isCustom ? 'text-amber-200' : dimmed ? 'text-gray-300' : 'text-white'
+            isCancelled ? 'line-through text-gray-600'
+            : isCustom  ? 'text-amber-200'
+            : dimmed    ? 'text-gray-300'
+            :             'text-white'
           }`}>
             {item.food_item_name}
           </span>
+          {isCancelled && (
+            <span className="text-xs bg-red-900/50 text-red-400 border border-red-800/50 px-2 py-0.5 rounded-full">
+              Cancelled
+            </span>
+          )}
         </div>
-        <span className={`font-extrabold text-2xl flex-shrink-0 ${dimmed ? 'text-gray-500' : statusText}`}>
-          ×{item.quantity}
-        </span>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <span className={`font-extrabold text-2xl ${
+            isCancelled ? 'text-gray-600 line-through' : dimmed ? 'text-gray-500' : statusText
+          }`}>
+            ×{item.quantity}
+          </span>
+
+          {/* Action buttons — only for non-cancelled items on kitchen side */}
+          {!isCancelled && !dimmed && onCancel && (
+            <>
+              {item.quantity > 1 && (
+                <button
+                  onClick={() => onReduce(item)}
+                  title="Reduce quantity"
+                  className="w-7 h-7 rounded-lg bg-amber-900/60 border border-amber-700/50 text-amber-400
+                             flex items-center justify-center hover:bg-amber-800/60 transition-colors"
+                >
+                  <Minus size={13} />
+                </button>
+              )}
+              <button
+                onClick={() => onCancel(item)}
+                title="Cancel item"
+                className="w-7 h-7 rounded-lg bg-red-900/60 border border-red-700/50 text-red-400
+                           flex items-center justify-center hover:bg-red-800/60 transition-colors"
+              >
+                <Trash2 size={13} />
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
-      {isCustom && components && components.length > 0 && (
+      {!isCancelled && isCustom && components && components.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {components.map((c, i) => (
             <span key={i}
@@ -93,7 +276,7 @@ function KitchenItem({ item, statusText, dimmed = false }) {
         </div>
       )}
 
-      {addons && addons.length > 0 && (
+      {!isCancelled && addons && addons.length > 0 && (
         <div className="flex flex-wrap gap-1 items-center">
           <span className="text-xs text-gray-500 mr-0.5">Add-ons:</span>
           {addons.map((a, i) => (
@@ -109,8 +292,12 @@ function KitchenItem({ item, statusText, dimmed = false }) {
 }
 
 // ── Active orders tab ─────────────────────────────────────────────────────────
-function ActiveOrders({ batches, pendingCount, preparingCount, advance }) {
-  if (batches.length === 0) {
+function ActiveOrders({ batches, pendingCount, preparingCount, advance, onCancelItem, onReduceItem }) {
+  const activeBatches = batches.filter(b =>
+    b.items.some(i => !i.cancelled_by_kitchen)
+  )
+
+  if (activeBatches.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-4 text-gray-600">
         <UtensilsCrossed size={56} />
@@ -136,10 +323,12 @@ function ActiveOrders({ batches, pendingCount, preparingCount, advance }) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
         {batches.map(batch => {
-          const meta       = STATUS_META[batch.status]
-          const isPending  = batch.status === 'PENDING'
-          const isWorking  = advance.isPending && advance.variables?.id === batch.id
-          const nextStatus = isPending ? 'PREPARING' : 'SERVED'
+          const meta        = STATUS_META[batch.status]
+          const isPending   = batch.status === 'PENDING'
+          const isWorking   = advance.isPending && advance.variables?.id === batch.id
+          const nextStatus  = isPending ? 'PREPARING' : 'SERVED'
+          const activeItems = batch.items.filter(i => !i.cancelled_by_kitchen)
+          if (activeItems.length === 0) return null
 
           return (
             <div key={batch.id}
@@ -161,7 +350,13 @@ function ActiveOrders({ batches, pendingCount, preparingCount, advance }) {
 
               <div className="flex-1 px-4 py-3 space-y-2">
                 {batch.items.map(item => (
-                  <KitchenItem key={item.id} item={item} statusText={meta.text} />
+                  <KitchenItem
+                    key={item.id}
+                    item={item}
+                    statusText={meta.text}
+                    onCancel={onCancelItem}
+                    onReduce={onReduceItem}
+                  />
                 ))}
                 {batch.notes && (
                   <p className="text-gray-400 text-xs border-t border-gray-800 pt-2 italic">
@@ -195,7 +390,7 @@ function ActiveOrders({ batches, pendingCount, preparingCount, advance }) {
 }
 
 // ── Served orders tab ─────────────────────────────────────────────────────────
-function ServedOrders() {
+function ServedOrders({ onCancelItem }) {
   const { data, isLoading } = useQuery({
     queryKey:        ['kitchen-served'],
     queryFn:         () => tablesAPI.kitchen.servedBatches().then(r => r.data),
@@ -248,7 +443,13 @@ function ServedOrders() {
 
             <div className="flex-1 px-4 py-3 space-y-2">
               {batch.items.map(item => (
-                <KitchenItem key={item.id} item={item} statusText="text-gray-500" dimmed />
+                <KitchenItem
+                  key={item.id}
+                  item={item}
+                  statusText="text-gray-500"
+                  dimmed={!item.cancelled_by_kitchen}
+                  onCancel={onCancelItem}
+                />
               ))}
               {batch.notes && (
                 <p className="text-gray-500 text-xs border-t border-gray-800 pt-2 italic">
@@ -266,7 +467,11 @@ function ServedOrders() {
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function KitchenPage() {
   const [tab, setTab] = useState('active')
-  const qc = useQueryClient()
+  const qc            = useQueryClient()
+
+  // PIN / reduce modal state
+  const [cancelTarget, setCancelTarget] = useState(null) // item to cancel
+  const [reduceTarget, setReduceTarget] = useState(null) // item to reduce
 
   const { data, isLoading } = useQuery({
     queryKey:        ['kitchen-batches'],
@@ -281,6 +486,34 @@ export default function KitchenPage() {
       qc.invalidateQueries(['kitchen-served'])
     },
     onError: () => toast.error('Failed to update status'),
+  })
+
+  const cancelMutation = useMutation({
+    mutationFn: ({ itemId, pin }) => tablesAPI.kitchen.cancelItem(itemId, pin),
+    onSuccess: () => {
+      toast.success('Item cancelled and customer notified.')
+      setCancelTarget(null)
+      qc.invalidateQueries(['kitchen-batches'])
+      qc.invalidateQueries(['kitchen-served'])
+    },
+    onError: (err) => {
+      const msg = err?.response?.data?.error || 'Failed to cancel item.'
+      toast.error(msg)
+    },
+  })
+
+  const reduceMutation = useMutation({
+    mutationFn: ({ itemId, newQty, pin }) => tablesAPI.kitchen.reduceItem(itemId, newQty, pin),
+    onSuccess: () => {
+      toast.success('Quantity reduced and customer notified.')
+      setReduceTarget(null)
+      qc.invalidateQueries(['kitchen-batches'])
+      qc.invalidateQueries(['kitchen-served'])
+    },
+    onError: (err) => {
+      const msg = err?.response?.data?.error || 'Failed to reduce quantity.'
+      toast.error(msg)
+    },
   })
 
   const batches        = data?.batches        || []
@@ -334,9 +567,32 @@ export default function KitchenPage() {
             pendingCount={pendingCount}
             preparingCount={preparingCount}
             advance={advance}
+            onCancelItem={setCancelTarget}
+            onReduceItem={setReduceTarget}
           />
-        : <ServedOrders />
+        : <ServedOrders onCancelItem={setCancelTarget} />
       }
+
+      {/* Cancel item PIN modal */}
+      {cancelTarget && (
+        <PinModal
+          title="Cancel Item"
+          description={`Cancel "${cancelTarget.food_item_name}" ×${cancelTarget.quantity}? Stock will be restored and the customer will be notified.`}
+          loading={cancelMutation.isPending}
+          onClose={() => setCancelTarget(null)}
+          onConfirm={(pin) => cancelMutation.mutate({ itemId: cancelTarget.id, pin })}
+        />
+      )}
+
+      {/* Reduce quantity modal */}
+      {reduceTarget && (
+        <ReduceModal
+          item={reduceTarget}
+          loading={reduceMutation.isPending}
+          onClose={() => setReduceTarget(null)}
+          onConfirm={(newQty, pin) => reduceMutation.mutate({ itemId: reduceTarget.id, newQty, pin })}
+        />
+      )}
     </div>
   )
 }

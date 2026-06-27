@@ -88,13 +88,15 @@ class OrderSubmitSerializer(serializers.Serializer):
 
 
 class TableOrderItemSerializer(serializers.ModelSerializer):
-    food_item_name = serializers.SerializerMethodField()
-    line_total     = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    food_item_name       = serializers.SerializerMethodField()
+    line_total           = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    cancelled_by_kitchen = serializers.BooleanField(read_only=True)
 
     class Meta:
         model  = TableOrderItem
         fields = ['id', 'food_item', 'food_item_name', 'custom_name', 'quantity',
-                  'unit_price', 'addon_unit_price', 'line_total', 'notes']
+                  'unit_price', 'addon_unit_price', 'line_total', 'notes',
+                  'cancelled_by_kitchen', 'cancelled_at']
 
     def get_food_item_name(self, obj):
         return obj.food_item.name if obj.food_item_id else (obj.custom_name or 'Custom Item')

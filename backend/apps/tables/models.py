@@ -52,6 +52,7 @@ class TableSession(models.Model):
             item.line_total
             for batch in self.batches.prefetch_related('items').all()
             for item in batch.items.all()
+            if not item.cancelled_by_kitchen
         )
         return total
 
@@ -61,6 +62,7 @@ class TableSession(models.Model):
             item.quantity
             for batch in self.batches.prefetch_related('items').all()
             for item in batch.items.all()
+            if not item.cancelled_by_kitchen
         )
 
 
@@ -88,13 +90,15 @@ class TableOrderBatch(models.Model):
 
 
 class TableOrderItem(models.Model):
-    batch            = models.ForeignKey(TableOrderBatch, on_delete=models.CASCADE, related_name='items')
-    food_item        = models.ForeignKey('menu.FoodItem', on_delete=models.PROTECT, related_name='table_order_items', null=True, blank=True)
-    custom_name      = models.CharField(max_length=200, blank=True)
-    quantity         = models.PositiveIntegerField(default=1)
-    unit_price       = models.DecimalField(max_digits=10, decimal_places=2)
-    addon_unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    notes            = models.TextField(blank=True)
+    batch                = models.ForeignKey(TableOrderBatch, on_delete=models.CASCADE, related_name='items')
+    food_item            = models.ForeignKey('menu.FoodItem', on_delete=models.PROTECT, related_name='table_order_items', null=True, blank=True)
+    custom_name          = models.CharField(max_length=200, blank=True)
+    quantity             = models.PositiveIntegerField(default=1)
+    unit_price           = models.DecimalField(max_digits=10, decimal_places=2)
+    addon_unit_price     = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    notes                = models.TextField(blank=True)
+    cancelled_by_kitchen = models.BooleanField(default=False)
+    cancelled_at         = models.DateTimeField(null=True, blank=True)
 
     @property
     def line_total(self):
@@ -103,3 +107,16 @@ class TableOrderItem(models.Model):
     def __str__(self):
         name = self.food_item.name if self.food_item_id else (self.custom_name or 'Custom')
         return f"{name} × {self.quantity}"
+
+
+class KitchenNotification(models.Model):
+    session    = models.ForeignKey(TableSession, on_delete=models.CASCADE, related_name='notifications')
+    message    = models.TextField()
+    is_seen    = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Notification for Table {self.session.table.number}: {self.message[:40]}"

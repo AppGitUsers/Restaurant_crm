@@ -47,6 +47,11 @@ class RestaurantSettings(models.Model):
         help_text='Send low-stock alerts to admin WhatsApp'
     )
 
+    kitchen_cancel_pin = models.CharField(
+        max_length=20, blank=True, default='',
+        help_text='PIN kitchen staff must enter to cancel or reduce order items (leave blank to disable PIN check)'
+    )
+
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

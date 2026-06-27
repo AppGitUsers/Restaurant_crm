@@ -10,7 +10,7 @@ from decimal import Decimal
 from datetime import datetime, time as _time
 
 from apps.accounts.permissions import IsAdmin, IsAdminOrBiller, IsAdminOrBillerOrKitchen
-from .models import Table, TableSession, TableOrderBatch, TableOrderItem
+from .models import Table, TableSession, TableOrderBatch, TableOrderItem, KitchenNotification
 from .serializers import (
     PublicMenuItemSerializer, OrderSubmitSerializer,
     TableSerializer, TableSessionSerializer, TableOrderBatchSerializer,
@@ -92,6 +92,7 @@ class PublicMenuView(APIView):
         session         = table.get_active_session()
         session_claimed = bool(session and session.session_key)
         session_orders  = []
+        unseen_notifications = []
         if session:
             for batch in (session.batches
                           .prefetch_related('items__food_item')
@@ -99,12 +100,13 @@ class PublicMenuView(APIView):
                 batch_items = []
                 for it in batch.items.all():
                     batch_items.append({
-                        'name':             it.food_item.name if it.food_item_id else (it.custom_name or 'Custom Item'),
-                        'quantity':         it.quantity,
-                        'unit_price':       float(it.unit_price),
-                        'addon_unit_price': float(it.addon_unit_price),
-                        'notes':            it.notes,
-                        'is_custom':        it.food_item_id is None,
+                        'name':                it.food_item.name if it.food_item_id else (it.custom_name or 'Custom Item'),
+                        'quantity':            it.quantity,
+                        'unit_price':          float(it.unit_price),
+                        'addon_unit_price':    float(it.addon_unit_price),
+                        'notes':               it.notes,
+                        'is_custom':           it.food_item_id is None,
+                        'cancelled_by_kitchen': it.cancelled_by_kitchen,
                     })
                 session_orders.append({
                     'id':        batch.id,
@@ -112,16 +114,21 @@ class PublicMenuView(APIView):
                     'placed_at': batch.placed_at,
                     'items':     batch_items,
                 })
+            unseen_notifications = [
+                {'id': n.id, 'message': n.message}
+                for n in session.notifications.filter(is_seen=False)
+            ]
 
         return Response({
-            'table_number':        table.number,
-            'has_active_session':  session is not None,
-            'session_claimed':     session_claimed,
-            'is_accepting_orders': table.is_accepting_orders,
-            'gst_rate':            gst_rate,
-            'categories':          list(grouped.values()),
-            'customizable_types':  ct_list,
-            'session_orders':      session_orders,
+            'table_number':          table.number,
+            'has_active_session':    session is not None,
+            'session_claimed':       session_claimed,
+            'is_accepting_orders':   table.is_accepting_orders,
+            'gst_rate':              gst_rate,
+            'categories':            list(grouped.values()),
+            'customizable_types':    ct_list,
+            'session_orders':        session_orders,
+            'unseen_notifications':  unseen_notifications,
         })
 
 
@@ -561,6 +568,188 @@ class KitchenBatchUpdateView(APIView):
         batch.status = new_status
         batch.save(update_fields=['status'])
         return Response(TableOrderBatchSerializer(batch).data)
+
+
+def _validate_kitchen_pin(pin):
+    """Returns True if pin matches the configured kitchen_cancel_pin, or if no pin is set."""
+    from apps.settings_app.models import RestaurantSettings
+    configured = RestaurantSettings.get_settings().kitchen_cancel_pin
+    if not configured:
+        return True
+    return pin == configured
+
+
+def _reverse_item_stock(item, qty_to_reverse):
+    """Add back stock for `qty_to_reverse` units of a TableOrderItem. No-op for custom/untracked items."""
+    fi = item.food_item
+    if not fi or not fi.tracks_stock:
+        return
+
+    from apps.inventory.models import Stock, StockTransaction
+
+    if fi.is_combo:
+        pairs = [
+            (ri.ingredient_id, ri.quantity_required)
+            for cc in fi.combo_components.prefetch_related('component__recipe_ingredients').all()
+            for ri in cc.component.recipe_ingredients.all()
+            if cc.component.tracks_stock
+        ]
+    else:
+        pairs = [(ri.ingredient_id, ri.quantity_required) for ri in fi.recipe_ingredients.all()]
+
+    if not pairs:
+        return
+
+    ingredient_ids = sorted({iid for iid, _ in pairs})
+    locked = {
+        s.ingredient_id: s
+        for s in Stock.objects.select_for_update().filter(ingredient_id__in=ingredient_ids)
+    }
+    table_num = item.batch.session.table.number
+    for ingredient_id, qty_required in pairs:
+        needed = qty_required * qty_to_reverse
+        stock  = locked.get(ingredient_id)
+        if stock:
+            stock.current_quantity += needed
+            stock.save(update_fields=['current_quantity'])
+        StockTransaction.objects.create(
+            ingredient_id=ingredient_id,
+            tx_type='IN',
+            quantity=needed,
+            reference=f"kitchen_cancel_item:{item.id}",
+            note=f"Kitchen cancel — Table {table_num}: {fi.name} ×{qty_to_reverse}",
+        )
+
+
+class KitchenCancelItemView(APIView):
+    """Kitchen cancels a single item from any batch (any status). Reverses stock, notifies customer."""
+    permission_classes = [IsAdminOrBillerOrKitchen]
+
+    def post(self, request, item_id):
+        pin = request.data.get('pin', '')
+        if not _validate_kitchen_pin(pin):
+            return Response({'error': 'Incorrect PIN.'}, status=status.HTTP_403_FORBIDDEN)
+
+        with transaction.atomic():
+            try:
+                item = (TableOrderItem.objects
+                        .select_for_update()
+                        .select_related('batch__session__table', 'food_item')
+                        .prefetch_related(
+                            'food_item__recipe_ingredients',
+                            'food_item__combo_components__component__recipe_ingredients',
+                        )
+                        .get(pk=item_id))
+            except TableOrderItem.DoesNotExist:
+                return Response({'error': 'Item not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+            if item.cancelled_by_kitchen:
+                return Response({'error': 'Item already cancelled.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            _reverse_item_stock(item, item.quantity)
+
+            item.cancelled_by_kitchen = True
+            item.cancelled_at         = timezone.now()
+            item.save(update_fields=['cancelled_by_kitchen', 'cancelled_at'])
+
+            item_name = item.food_item.name if item.food_item_id else (item.custom_name or 'Custom Item')
+            KitchenNotification.objects.create(
+                session=item.batch.session,
+                message=f"Sorry, {item_name} ×{item.quantity} could not be prepared and has been removed from your order.",
+            )
+
+        try:
+            from apps.menu.models import FoodItem as FI
+            for food in FI.objects.filter(is_active=True, is_combo=False):
+                food.update_makeable_count()
+            for food in FI.objects.filter(is_active=True, is_combo=True):
+                food.update_makeable_count()
+        except Exception:
+            pass
+
+        return Response({'message': 'Item cancelled.', 'item_id': item_id})
+
+
+class KitchenReduceItemView(APIView):
+    """Kitchen reduces the quantity of a single item. Reverses stock for the difference, notifies customer."""
+    permission_classes = [IsAdminOrBillerOrKitchen]
+
+    def post(self, request, item_id):
+        pin          = request.data.get('pin', '')
+        new_quantity = request.data.get('new_quantity')
+
+        if not _validate_kitchen_pin(pin):
+            return Response({'error': 'Incorrect PIN.'}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            new_quantity = int(new_quantity)
+            if new_quantity < 1:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response({'error': 'new_quantity must be a positive integer.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            try:
+                item = (TableOrderItem.objects
+                        .select_for_update()
+                        .select_related('batch__session__table', 'food_item')
+                        .prefetch_related(
+                            'food_item__recipe_ingredients',
+                            'food_item__combo_components__component__recipe_ingredients',
+                        )
+                        .get(pk=item_id))
+            except TableOrderItem.DoesNotExist:
+                return Response({'error': 'Item not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+            if item.cancelled_by_kitchen:
+                return Response({'error': 'Item already cancelled.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            if new_quantity >= item.quantity:
+                return Response(
+                    {'error': f'New quantity must be less than current quantity ({item.quantity}).'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            qty_diff  = item.quantity - new_quantity
+            item_name = item.food_item.name if item.food_item_id else (item.custom_name or 'Custom Item')
+
+            _reverse_item_stock(item, qty_diff)
+
+            item.quantity = new_quantity
+            item.save(update_fields=['quantity'])
+
+            KitchenNotification.objects.create(
+                session=item.batch.session,
+                message=f"Sorry, {item_name} quantity reduced from {item.quantity + qty_diff} to {new_quantity} — only {new_quantity} available.",
+            )
+
+        try:
+            from apps.menu.models import FoodItem as FI
+            for food in FI.objects.filter(is_active=True, is_combo=False):
+                food.update_makeable_count()
+            for food in FI.objects.filter(is_active=True, is_combo=True):
+                food.update_makeable_count()
+        except Exception:
+            pass
+
+        return Response({'message': 'Quantity reduced.', 'item_id': item_id, 'new_quantity': new_quantity})
+
+
+class CustomerAckNotificationView(APIView):
+    """Customer dismisses (marks seen) all unseen notifications for their active session."""
+    permission_classes = [AllowAny]
+    throttle_classes   = [OrderThrottle]
+
+    def post(self, request, qr_token):
+        table   = get_object_or_404(Table, qr_token=qr_token, is_active=True)
+        session = table.get_active_session()
+        if session:
+            ids = request.data.get('ids', [])
+            qs  = session.notifications.filter(is_seen=False)
+            if ids:
+                qs = qs.filter(id__in=ids)
+            qs.update(is_seen=True)
+        return Response({'ok': True})
 
 
 # ── Biller: authenticated table management endpoints ────────────────────────

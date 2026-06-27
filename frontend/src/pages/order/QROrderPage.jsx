@@ -797,6 +797,8 @@ export default function QROrderPage() {
   const [showCustomize, setCustomize]   = useState(false)
   const [addonPrompt,  setAddonPrompt]  = useState(null)  // item to show addon prompt after adding
 
+  const [kitchenNotifications, setKitchenNotifications] = useState([])
+
   const categoryRefs   = useRef({})
   const notifiedServed = useRef(new Set())      // batch IDs already toasted as SERVED
 
@@ -837,6 +839,12 @@ export default function QROrderPage() {
       }
     })
   }, [data?.session_orders])
+
+  // ── Show kitchen cancellation/reduction notifications as a popup ─────────────
+  useEffect(() => {
+    const incoming = data?.unseen_notifications || []
+    if (incoming.length > 0) setKitchenNotifications(incoming)
+  }, [data?.unseen_notifications])
 
   // ── Cart helpers ─────────────────────────────────���──────────────────────────
 
@@ -1245,6 +1253,44 @@ export default function QROrderPage() {
           }}
           onClose={() => setAddonPrompt(null)}
         />
+      )}
+
+      {/* Kitchen cancellation / reduction notification popup */}
+      {kitchenNotifications.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4 shadow-2xl">
+            <div className="flex flex-col items-center gap-3 text-center">
+              <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center">
+                <UtensilsCrossed size={28} className="text-red-500" />
+              </div>
+              <h3 className="font-bold text-gray-900 text-lg">Order Update</h3>
+              <div className="space-y-2 w-full">
+                {kitchenNotifications.map(n => (
+                  <p key={n.id} className="text-gray-600 text-sm bg-red-50 border border-red-100 rounded-xl px-4 py-2">
+                    {n.message}
+                  </p>
+                ))}
+              </div>
+              <p className="text-gray-400 text-xs">The rest of your order will be served as usual.</p>
+            </div>
+            <button
+              onClick={async () => {
+                const ids = kitchenNotifications.map(n => n.id)
+                setKitchenNotifications([])
+                try {
+                  await tablesAPI.public.ackNotifications(token, ids)
+                } catch {
+                  // silent — notification already dismissed on client side
+                }
+                refetch()
+              }}
+              className="w-full py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white
+                         font-bold transition-colors"
+            >
+              OK, Got It
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
