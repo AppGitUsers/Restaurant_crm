@@ -626,19 +626,6 @@ class KitchenCancelItemView(APIView):
     permission_classes = [IsAdminOrBillerOrKitchen]
 
     def post(self, request, item_id):
-        import traceback as _tb, logging as _log
-        try:
-            return self._post(request, item_id)
-        except Exception as _exc:
-            _log.getLogger(__name__).error(
-                "KitchenCancelItemView item=%s: %s\n%s", item_id, _exc, _tb.format_exc()
-            )
-            return Response(
-                {'error': str(_exc), 'type': type(_exc).__name__},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-    def _post(self, request, item_id):
         pin           = request.data.get('pin', '')
         restore_stock = bool(request.data.get('restore_stock', False))
 
@@ -648,7 +635,7 @@ class KitchenCancelItemView(APIView):
         with transaction.atomic():
             try:
                 item = (TableOrderItem.objects
-                        .select_for_update()
+                        .select_for_update(of=('self',))
                         .select_related('batch__session__table', 'food_item')
                         .prefetch_related(
                             'food_item__recipe_ingredients',
@@ -708,7 +695,7 @@ class KitchenReduceItemView(APIView):
         with transaction.atomic():
             try:
                 item = (TableOrderItem.objects
-                        .select_for_update()
+                        .select_for_update(of=('self',))
                         .select_related('batch__session__table', 'food_item')
                         .prefetch_related(
                             'food_item__recipe_ingredients',
