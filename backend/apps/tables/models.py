@@ -80,6 +80,7 @@ class TableOrderBatch(models.Model):
     status    = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
     added_by  = models.CharField(max_length=10, choices=AddedBy.choices, default=AddedBy.CUSTOMER)
     placed_at = models.DateTimeField(auto_now_add=True)
+    served_at = models.DateTimeField(null=True, blank=True)
     notes     = models.TextField(blank=True)
 
     class Meta:

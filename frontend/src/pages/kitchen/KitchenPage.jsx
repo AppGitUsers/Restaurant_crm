@@ -433,77 +433,135 @@ function ActiveOrders({ batches, pendingCount, preparingCount, advance, onCancel
   )
 }
 
+function BatchDuration({ placedAt, servedAt }) {
+  if (!servedAt) return null
+  const mins = Math.round((new Date(servedAt) - new Date(placedAt)) / 60000)
+  const label = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`
+  const color = mins <= 15 ? 'text-green-400' : mins <= 30 ? 'text-yellow-400' : 'text-red-400'
+  return <span className={`text-xs font-mono font-semibold ${color}`}>{label}</span>
+}
+
 // ── Served orders tab ─────────────────────────────────────────────────────────
 function ServedOrders({ onCancelItem }) {
+  const today     = format(new Date(), 'yyyy-MM-dd')
+  const yesterday = format(new Date(Date.now() - 86400000), 'yyyy-MM-dd')
+
+  const [selectedDate, setSelectedDate] = useState(today)
+  const [customDate,   setCustomDate]   = useState('')
+
   const { data, isLoading } = useQuery({
-    queryKey:        ['kitchen-served'],
-    queryFn:         () => tablesAPI.kitchen.servedBatches().then(r => r.data),
+    queryKey:        ['kitchen-served', selectedDate],
+    queryFn:         () => tablesAPI.kitchen.servedBatches(selectedDate).then(r => r.data),
     refetchInterval: 30_000,
   })
 
-  const batches = data?.batches || []
+  const batches       = data?.batches || []
+  const cancelledCount = batches.reduce((n, b) => n + b.items.filter(i => i.cancelled_by_kitchen).length, 0)
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-40 text-gray-500">
-        <Loader2 size={24} className="animate-spin" />
-      </div>
-    )
-  }
-
-  if (batches.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3 text-gray-600">
-        <ClipboardCheck size={48} />
-        <p className="text-lg font-semibold">No served orders yet</p>
-      </div>
-    )
-  }
+  const pickDate = (d) => { setSelectedDate(d); setCustomDate('') }
 
   return (
     <div className="space-y-4">
-      <p className="text-gray-500 text-xs">Showing last {batches.length} served orders (newest first)</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-        {batches.map(batch => (
-          <div key={batch.id}
-            className="rounded-2xl bg-gray-900 border-2 border-green-800 flex flex-col overflow-hidden opacity-80">
 
-            <div className="bg-green-800 px-4 py-2.5 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className="text-white font-extrabold text-2xl">T{batch.table_number}</span>
-                {batch.added_by === 'BILLER' && (
-                  <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">Biller</span>
-                )}
-              </div>
-              <div className="flex flex-col items-end gap-0.5">
-                <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-200">
-                  <CheckCheck size={12} /> Served
-                </span>
-                <span className="text-green-300/70 text-xs font-mono">
-                  {format(parseISO(batch.placed_at), 'dd MMM · HH:mm')}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex-1 px-4 py-3 space-y-2">
-              {batch.items.map(item => (
-                <KitchenItem
-                  key={item.id}
-                  item={item}
-                  statusText="text-gray-500"
-                  dimmed={!item.cancelled_by_kitchen}
-                  onCancel={onCancelItem}
-                />
-              ))}
-              {batch.notes && (
-                <p className="text-gray-500 text-xs border-t border-gray-800 pt-2 italic">
-                  Note: {batch.notes}
-                </p>
-              )}
-            </div>
-          </div>
-        ))}
+      {/* Date filter bar */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={() => pickDate(today)}
+          className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors
+            ${selectedDate === today ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+        >
+          Today
+        </button>
+        <button
+          onClick={() => pickDate(yesterday)}
+          className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors
+            ${selectedDate === yesterday ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+        >
+          Yesterday
+        </button>
+        <input
+          type="date"
+          value={customDate}
+          max={today}
+          onChange={e => { setCustomDate(e.target.value); setSelectedDate(e.target.value) }}
+          className="bg-gray-800 border border-gray-700 text-gray-300 text-sm rounded-lg px-3 py-1.5
+                     focus:outline-none focus:border-green-600 cursor-pointer"
+        />
+        {batches.length > 0 && (
+          <span className="ml-auto text-gray-500 text-xs">
+            {batches.length} order{batches.length !== 1 ? 's' : ''}
+            {cancelledCount > 0 && ` · ${cancelledCount} item${cancelledCount !== 1 ? 's' : ''} cancelled`}
+          </span>
+        )}
       </div>
+
+      {/* Content */}
+      {isLoading ? (
+        <div className="flex items-center justify-center h-40 text-gray-500">
+          <Loader2 size={24} className="animate-spin" />
+        </div>
+      ) : batches.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-64 gap-3 text-gray-600">
+          <ClipboardCheck size={48} />
+          <p className="text-lg font-semibold">No served orders</p>
+          <p className="text-sm text-gray-700">
+            {selectedDate === today ? 'Nothing served today yet.' : `No orders on ${format(new Date(selectedDate + 'T00:00:00'), 'dd MMM yyyy')}.`}
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-2xl overflow-hidden border border-gray-800">
+          {batches.map((batch, idx) => {
+            const activeItems    = batch.items.filter(i => !i.cancelled_by_kitchen)
+            const cancelledItems = batch.items.filter(i => i.cancelled_by_kitchen)
+            return (
+              <div
+                key={batch.id}
+                className={`flex items-start gap-4 px-4 py-3 ${idx !== batches.length - 1 ? 'border-b border-gray-800' : ''} hover:bg-gray-900/50 transition-colors`}
+              >
+                {/* Time */}
+                <span className="text-gray-300 text-sm font-mono font-semibold w-12 flex-shrink-0 pt-0.5">
+                  {format(parseISO(batch.placed_at), 'HH:mm')}
+                </span>
+
+                {/* Table + source */}
+                <div className="flex flex-col gap-0.5 w-16 flex-shrink-0">
+                  <span className="text-white font-bold text-sm">T{batch.table_number}</span>
+                  {batch.added_by === 'BILLER' && (
+                    <span className="text-xs text-gray-500">Biller</span>
+                  )}
+                </div>
+
+                {/* Items */}
+                <div className="flex-1 min-w-0 space-y-0.5">
+                  {activeItems.map(i => (
+                    <div key={i.id} className="flex items-center gap-2 text-sm text-gray-300">
+                      <span className="text-yellow-400 font-bold text-xs w-6 text-right flex-shrink-0">×{i.quantity}</span>
+                      <span>{i.food_item_name}</span>
+                    </div>
+                  ))}
+                  {cancelledItems.map(i => (
+                    <div key={i.id} className="flex items-center gap-2 text-xs text-red-400 line-through opacity-70">
+                      <span className="font-bold w-6 text-right flex-shrink-0">×{i.quantity}</span>
+                      <span>{i.food_item_name}</span>
+                    </div>
+                  ))}
+                  {batch.notes && (
+                    <p className="text-gray-600 text-xs mt-1 italic">{batch.notes}</p>
+                  )}
+                </div>
+
+                {/* Served + duration */}
+                <div className="flex flex-col items-end gap-0.5 flex-shrink-0 pt-0.5">
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-500">
+                    <CheckCheck size={13} /> Served
+                  </span>
+                  <BatchDuration placedAt={batch.placed_at} servedAt={batch.served_at} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

@@ -196,7 +196,7 @@ export const tablesAPI = {
   // Kitchen
   kitchen: {
     batches:       ()                       => client.get('/kitchen/batches/'),
-    servedBatches: ()                       => client.get('/kitchen/batches/?served=true'),
+    servedBatches: (date)                   => client.get('/kitchen/batches/', { params: { served: 'true', ...(date && { date }) } }),
     updateStatus:  (id, status)             => client.patch(`/kitchen/batches/${id}/`, { status }),
     cancelItem:    (itemId, pin, restoreStock) => client.post(`/kitchen/items/${itemId}/cancel/`, { pin, restore_stock: restoreStock }),
     reduceItem:    (itemId, newQty, pin, restoreStock) => client.post(`/kitchen/items/${itemId}/reduce/`, { pin, new_quantity: newQty, restore_stock: restoreStock }),

@@ -110,7 +110,7 @@ class TableOrderBatchSerializer(serializers.ModelSerializer):
     class Meta:
         model  = TableOrderBatch
         fields = ['id', 'table_number', 'session_id',
-                  'status', 'added_by', 'placed_at', 'notes', 'items']
+                  'status', 'added_by', 'placed_at', 'served_at', 'notes', 'items']
 
 
 class TableSessionSerializer(serializers.ModelSerializer):

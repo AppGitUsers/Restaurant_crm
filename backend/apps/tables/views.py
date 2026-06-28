@@ -553,11 +553,17 @@ class KitchenBatchListView(APIView):
 
     def get(self, request):
         if request.query_params.get('served') == 'true':
+            from datetime import date as _date
+            date_str = request.query_params.get('date', '')
+            try:
+                filter_date = _date.fromisoformat(date_str) if date_str else timezone.localdate()
+            except ValueError:
+                filter_date = timezone.localdate()
             batches = (TableOrderBatch.objects
-                       .filter(status=TableOrderBatch.Status.SERVED)
+                       .filter(status=TableOrderBatch.Status.SERVED, placed_at__date=filter_date)
                        .select_related('session__table')
                        .prefetch_related('items__food_item')
-                       .order_by('-placed_at')[:60])
+                       .order_by('-placed_at'))
             return Response({'batches': TableOrderBatchSerializer(batches, many=True).data})
 
         batches = list(
@@ -598,7 +604,11 @@ class KitchenBatchUpdateView(APIView):
             )
 
         batch.status = new_status
-        batch.save(update_fields=['status'])
+        update_fields = ['status']
+        if new_status == TableOrderBatch.Status.SERVED:
+            batch.served_at = timezone.now()
+            update_fields.append('served_at')
+        batch.save(update_fields=update_fields)
         return Response(TableOrderBatchSerializer(batch).data)
 
 
