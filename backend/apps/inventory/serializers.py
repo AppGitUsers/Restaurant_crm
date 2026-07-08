@@ -1,3 +1,4 @@
+import re
 from rest_framework import serializers
 from .models import Vendor, Stock, VendorInvoice, InvoiceItem, InvoicePayment, StockTransaction
 
@@ -12,6 +13,14 @@ class VendorSerializer(serializers.ModelSerializer):
 
     def get_invoice_count(self, obj):
         return obj.invoices.count()
+
+    def validate_phone(self, value):
+        if not value:
+            return value
+        digits = re.sub(r'\D', '', value)
+        if len(digits) < 10 or len(digits) > 15:
+            raise serializers.ValidationError('Enter a valid phone number (10–15 digits).')
+        return digits
 
 
 class StockSerializer(serializers.ModelSerializer):

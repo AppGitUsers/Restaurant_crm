@@ -237,9 +237,12 @@ function BillModal({ open, onClose, session, gstRate, onBill }) {
           <div className="relative">
             <label className="block text-xs font-medium text-gray-600 mb-1">Phone <span className="text-red-500">*</span></label>
             <input
+              type="tel"
+              inputMode="numeric"
+              maxLength={15}
               className="input"
               value={phone}
-              onChange={e => setPhone(e.target.value)}
+              onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 15))}
               placeholder="9876543210"
             />
             {phoneReady && isFetching && (

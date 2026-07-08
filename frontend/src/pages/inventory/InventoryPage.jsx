@@ -131,7 +131,7 @@ function VendorTab() {
         <div className="grid grid-cols-2 gap-3">
           <Field label="Name" required><input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></Field>
           <Field label="Contact Name"><input className="input" value={form.contact_name} onChange={e => setForm({ ...form, contact_name: e.target.value })} /></Field>
-          <Field label="Phone"><input className="input" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></Field>
+          <Field label="Phone"><input type="tel" inputMode="numeric" maxLength={15} className="input" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value.replace(/\D/g, '').slice(0, 15) })} placeholder="9876543210" /></Field>
           <Field label="Email"><input className="input" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></Field>
           <Field label="GSTIN"><input className="input" value={form.gstin} onChange={e => setForm({ ...form, gstin: e.target.value })} /></Field>
         </div>

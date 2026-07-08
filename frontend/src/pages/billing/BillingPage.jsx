@@ -360,10 +360,13 @@ function CustomerFields({ customerName, customerPhone, setCustomer }) {
       {/* Phone first — triggers lookup */}
       <div className="relative">
         <input
+          type="tel"
+          inputMode="numeric"
+          maxLength={15}
           className="input-sm pr-8"
           placeholder="Phone * (required)"
           value={customerPhone}
-          onChange={e => setCustomer(customerName, e.target.value)}
+          onChange={e => setCustomer(customerName, e.target.value.replace(/\D/g, '').slice(0, 15))}
         />
         {phoneReady && isFetching && (
           <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 text-xs animate-pulse">…</span>

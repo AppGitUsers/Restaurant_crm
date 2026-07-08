@@ -1,3 +1,4 @@
+import re
 from rest_framework import serializers
 from .models import Order, OrderItem
 
@@ -50,6 +51,14 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         model  = Order
         fields = ['customer_name', 'customer_phone', 'payment_method',
                   'discount', 'tax_percent', 'notes', 'items']
+
+    def validate_customer_phone(self, value):
+        if not value:
+            return value
+        digits = re.sub(r'\D', '', value)
+        if len(digits) < 10 or len(digits) > 15:
+            raise serializers.ValidationError('Enter a valid phone number (10–15 digits).')
+        return digits
 
     def create(self, validated_data):
         from apps.settings_app.models import RestaurantSettings
