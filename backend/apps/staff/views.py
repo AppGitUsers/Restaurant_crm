@@ -136,8 +136,8 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             paid_this_month = StaffPayment.objects.filter(
                 employee=emp,
                 payment_type='SALARY',
-                payment_date__year=year,
-                payment_date__month=month,
+                period_start__year=year,
+                period_start__month=month,
             ).exists()
 
             results.append({

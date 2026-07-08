@@ -125,7 +125,7 @@ class StaffPayment(models.Model):
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-        # Record in finance
+        # Record in finance — tx_date = payment_date (when money actually left)
         try:
             from apps.finance.models import Transaction
             Transaction.objects.update_or_create(
@@ -135,6 +135,7 @@ class StaffPayment(models.Model):
                     amount      = self.amount,
                     category    = 'STAFF_SALARY',
                     description = f"{self.payment_type} — {self.employee.name}",
+                    tx_date     = self.payment_date,
                 )
             )
         except Exception:

@@ -1170,17 +1170,14 @@ class TodaySessionsView(APIView):
         day_start = timezone.make_aware(datetime.combine(today, _time.min), local_tz)
         day_end   = timezone.make_aware(datetime.combine(today, _time.max), local_tz)
 
-        # OPEN   — currently active (always show)
-        # CLOSED — ended by biller, awaiting billing (always show)
-        # BILLED — completed sessions from the last 30 days
-        from datetime import timedelta
-        thirty_days_ago = timezone.now() - timedelta(days=30)
-
+        # OPEN   — currently active (always show regardless of date)
+        # CLOSED — awaiting billing (always show regardless of date)
+        # BILLED — today only
         sessions = list(
             TableSession.objects
             .filter(
                 Q(status__in=[TableSession.Status.OPEN, TableSession.Status.CLOSED]) |
-                Q(status=TableSession.Status.BILLED, closed_at__gte=thirty_days_ago)
+                Q(status=TableSession.Status.BILLED, closed_at__gte=day_start, closed_at__lte=day_end)
             )
             .select_related('table', 'order', 'order__biller')
             .prefetch_related('batches__items__food_item', 'order__items__food_item')
