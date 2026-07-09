@@ -99,7 +99,7 @@ class FoodItem(models.Model):
         recipe_items = self.recipe_ingredients.select_related('ingredient').all()
 
         if not recipe_items.exists():
-            self.makeable_count = 999
+            self.makeable_count = 0
             self.save(update_fields=['makeable_count'])
             return
 
