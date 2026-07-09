@@ -489,7 +489,7 @@ class PublicBatchCancelView(APIView):
             items = list(
                 batch.items
                 .select_for_update()
-                .select_related('food_item__recipe_ingredients')
+                .prefetch_related('food_item__recipe_ingredients')
             )
 
             # Build a set of ingredient IDs already handled by kitchen
