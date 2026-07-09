@@ -1,6 +1,7 @@
 import datetime
 from rest_framework import serializers
 from .models import Department, Shift, Employee, Attendance, StaffPayment
+from utils.image import compress_image
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
@@ -36,6 +37,11 @@ class EmployeeSerializer(serializers.ModelSerializer):
         if obj.photo and request:
             return request.build_absolute_uri(obj.photo.url)
         return None
+
+    def validate_photo(self, upload):
+        if upload:
+            upload = compress_image(upload, max_width=600, max_height=600)
+        return upload
 
 
 class AttendanceSerializer(serializers.ModelSerializer):

@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import FoodType, FoodItem, Ingredient, RecipeIngredient, Addon, ComboComponent
+from utils.image import compress_image
 
 
 class AddonSerializer(serializers.ModelSerializer):
@@ -106,9 +107,19 @@ class FoodItemSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(obj.photo.url)
         return None
 
+    def validate_photo(self, upload):
+        if upload:
+            upload = compress_image(upload, max_width=1200, max_height=1200)
+        return upload
+
 
 class FoodItemWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model  = FoodItem
         fields = ['id', 'food_type', 'name', 'description', 'price',
                   'photo', 'is_available', 'is_active', 'tracks_stock']
+
+    def validate_photo(self, upload):
+        if upload:
+            upload = compress_image(upload, max_width=1200, max_height=1200)
+        return upload
