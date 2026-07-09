@@ -76,18 +76,21 @@ class TableOrderBatch(models.Model):
         CUSTOMER = 'CUSTOMER', 'Customer'
         BILLER   = 'BILLER',   'Biller'
 
-    session   = models.ForeignKey(TableSession, on_delete=models.CASCADE, related_name='batches')
-    status    = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
-    added_by  = models.CharField(max_length=10, choices=AddedBy.choices, default=AddedBy.CUSTOMER)
-    placed_at = models.DateTimeField(auto_now_add=True)
-    served_at = models.DateTimeField(null=True, blank=True)
-    notes     = models.TextField(blank=True)
+    session       = models.ForeignKey(TableSession, on_delete=models.CASCADE, related_name='batches', null=True, blank=True)
+    billing_order = models.OneToOneField('billing.Order', on_delete=models.SET_NULL, null=True, blank=True, related_name='kitchen_batch')
+    status        = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    added_by      = models.CharField(max_length=10, choices=AddedBy.choices, default=AddedBy.CUSTOMER)
+    placed_at     = models.DateTimeField(auto_now_add=True)
+    served_at     = models.DateTimeField(null=True, blank=True)
+    notes         = models.TextField(blank=True)
 
     class Meta:
         ordering = ['placed_at']
 
     def __str__(self):
-        return f"Batch {self.id} — Table {self.session.table.number} ({self.status})"
+        if self.session_id:
+            return f"Batch {self.id} — Table {self.session.table.number} ({self.status})"
+        return f"Batch {self.id} — Counter ({self.status})"
 
 
 class TableOrderItem(models.Model):

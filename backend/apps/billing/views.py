@@ -53,6 +53,31 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.status         = 'PAID'
         order.save()  # triggers billing/signals.py → handle_order_paid → creates income Transaction
 
+        # Counter order → create kitchen batch so kitchen sees it
+        if not order.table_session_id:
+            try:
+                from apps.tables.models import TableOrderBatch, TableOrderItem
+                batch = TableOrderBatch.objects.create(
+                    billing_order=order,
+                    added_by=TableOrderBatch.AddedBy.BILLER,
+                    notes=order.notes or '',
+                )
+                for bi in order.items.select_related('food_item').all():
+                    TableOrderItem.objects.create(
+                        batch            = batch,
+                        food_item        = bi.food_item,
+                        custom_name      = bi.custom_name or '',
+                        quantity         = bi.quantity,
+                        unit_price       = bi.unit_price,
+                        addon_unit_price = bi.addon_unit_price,
+                        notes            = bi.notes or '',
+                    )
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception(
+                    "Failed to create kitchen batch for order %s", order.order_number
+                )
+
         # WhatsApp bill notification (non-blocking — never breaks the payment flow)
         try:
             from apps.notifications.utils import send_bill_notification

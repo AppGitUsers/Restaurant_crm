@@ -104,13 +104,27 @@ class TableOrderItemSerializer(serializers.ModelSerializer):
 
 class TableOrderBatchSerializer(serializers.ModelSerializer):
     items        = TableOrderItemSerializer(many=True, read_only=True)
-    table_number = serializers.IntegerField(source='session.table.number', read_only=True)
-    session_id   = serializers.IntegerField(source='session.id',           read_only=True)
+    table_number = serializers.SerializerMethodField()
+    session_id   = serializers.SerializerMethodField()
+    order_number = serializers.SerializerMethodField()
+    is_counter   = serializers.SerializerMethodField()
 
     class Meta:
         model  = TableOrderBatch
-        fields = ['id', 'table_number', 'session_id',
+        fields = ['id', 'table_number', 'session_id', 'order_number', 'is_counter',
                   'status', 'added_by', 'placed_at', 'served_at', 'notes', 'items']
+
+    def get_table_number(self, obj):
+        return obj.session.table.number if obj.session_id else None
+
+    def get_session_id(self, obj):
+        return obj.session_id
+
+    def get_order_number(self, obj):
+        return obj.billing_order.order_number if obj.billing_order_id else None
+
+    def get_is_counter(self, obj):
+        return obj.session_id is None
 
 
 class TableSessionSerializer(serializers.ModelSerializer):

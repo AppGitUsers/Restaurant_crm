@@ -380,8 +380,15 @@ function ActiveOrders({ batches, pendingCount, preparingCount, advance, onCancel
 
               <div className={`${meta.bg} px-4 py-2.5 flex items-center justify-between gap-3`}>
                 <div className="flex items-center gap-2">
-                  <span className="text-white font-extrabold text-2xl">T{batch.table_number}</span>
-                  {batch.added_by === 'BILLER' && (
+                  {batch.is_counter ? (
+                    <div className="flex flex-col leading-tight">
+                      <span className="text-white/60 text-[10px] font-semibold uppercase tracking-wide">Counter</span>
+                      <span className="text-white font-extrabold text-lg">{batch.order_number}</span>
+                    </div>
+                  ) : (
+                    <span className="text-white font-extrabold text-2xl">T{batch.table_number}</span>
+                  )}
+                  {batch.added_by === 'BILLER' && !batch.is_counter && (
                     <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">Biller</span>
                   )}
                 </div>
@@ -524,10 +531,19 @@ function ServedOrders({ onCancelItem }) {
                 </span>
 
                 {/* Table + source */}
-                <div className="flex flex-col gap-0.5 w-16 flex-shrink-0">
-                  <span className="text-white font-bold text-sm">T{batch.table_number}</span>
-                  {batch.added_by === 'BILLER' && (
-                    <span className="text-xs text-gray-500">Biller</span>
+                <div className="flex flex-col gap-0.5 w-20 flex-shrink-0">
+                  {batch.is_counter ? (
+                    <>
+                      <span className="text-amber-400 font-bold text-xs">Counter</span>
+                      <span className="text-white font-bold text-sm">{batch.order_number}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-white font-bold text-sm">T{batch.table_number}</span>
+                      {batch.added_by === 'BILLER' && (
+                        <span className="text-xs text-gray-500">Biller</span>
+                      )}
+                    </>
                   )}
                 </div>
 

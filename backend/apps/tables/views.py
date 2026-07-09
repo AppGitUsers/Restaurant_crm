@@ -561,7 +561,7 @@ class KitchenBatchListView(APIView):
                 filter_date = timezone.localdate()
             batches = (TableOrderBatch.objects
                        .filter(status=TableOrderBatch.Status.SERVED, placed_at__date=filter_date)
-                       .select_related('session__table')
+                       .select_related('session__table', 'billing_order')
                        .prefetch_related('items__food_item')
                        .order_by('-placed_at'))
             return Response({'batches': TableOrderBatchSerializer(batches, many=True).data})
@@ -569,7 +569,7 @@ class KitchenBatchListView(APIView):
         batches = list(
             TableOrderBatch.objects
             .exclude(status=TableOrderBatch.Status.SERVED)
-            .select_related('session__table')
+            .select_related('session__table', 'billing_order')
             .prefetch_related('items__food_item')
             .order_by('placed_at')
         )
@@ -645,7 +645,12 @@ def _reverse_item_stock(item, qty_to_reverse):
         s.ingredient_id: s
         for s in Stock.objects.select_for_update().filter(ingredient_id__in=ingredient_ids)
     }
-    table_num = item.batch.session.table.number
+    if item.batch.session_id:
+        location_label = f"Table {item.batch.session.table.number}"
+    else:
+        order_num = item.batch.billing_order.order_number if item.batch.billing_order_id else f"Batch {item.batch.id}"
+        location_label = f"Counter {order_num}"
+
     for ingredient_id, qty_required in pairs:
         needed = qty_required * qty_to_reverse
         stock  = locked.get(ingredient_id)
@@ -657,7 +662,7 @@ def _reverse_item_stock(item, qty_to_reverse):
             tx_type='IN',
             quantity=needed,
             reference=f"kitchen_cancel_item:{item.id}",
-            note=f"Kitchen cancel — Table {table_num}: {fi.name} ×{qty_to_reverse}",
+            note=f"Kitchen cancel — {location_label}: {fi.name} ×{qty_to_reverse}",
         )
 
 
@@ -696,10 +701,11 @@ class KitchenCancelItemView(APIView):
             item.save(update_fields=['cancelled_by_kitchen', 'cancelled_at'])
 
             item_name = item.food_item.name if item.food_item_id else (item.custom_name or 'Custom Item')
-            KitchenNotification.objects.create(
-                session=item.batch.session,
-                message=f"Sorry, {item_name} ×{item.quantity} could not be prepared and has been removed from your order.",
-            )
+            if item.batch.session_id:
+                KitchenNotification.objects.create(
+                    session=item.batch.session,
+                    message=f"Sorry, {item_name} ×{item.quantity} could not be prepared and has been removed from your order.",
+                )
 
         if restore_stock:
             try:
@@ -764,10 +770,11 @@ class KitchenReduceItemView(APIView):
             item.quantity = new_quantity
             item.save(update_fields=['quantity'])
 
-            KitchenNotification.objects.create(
-                session=item.batch.session,
-                message=f"Sorry, {item_name} quantity reduced from {item.quantity + qty_diff} to {new_quantity} — only {new_quantity} available.",
-            )
+            if item.batch.session_id:
+                KitchenNotification.objects.create(
+                    session=item.batch.session,
+                    message=f"Sorry, {item_name} quantity reduced from {item.quantity + qty_diff} to {new_quantity} — only {new_quantity} available.",
+                )
 
         if restore_stock:
             try:
