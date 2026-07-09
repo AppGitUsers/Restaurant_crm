@@ -405,7 +405,7 @@ function CustomerFields({ customerName, customerPhone, setCustomer }) {
 }
 
 // ── Cart panel ────────────────────────────────────────
-function CartPanel({ onPlaceOrder }) {
+function CartPanel({ onPlaceOrder, isLoading = false }) {
   const {
     items, removeItem, updateQty, setItemAddons,
     customerName, customerPhone, paymentMethod, discount, taxPercent,
@@ -582,7 +582,15 @@ function CartPanel({ onPlaceOrder }) {
 
       <div className="mt-3 flex gap-2">
         <button onClick={clearCart} className="btn-ghost flex-1 justify-center text-xs py-2"><X size={13} />Clear</button>
-        <button onClick={onPlaceOrder} className="btn-primary flex-1 justify-center py-2"><Receipt size={14} />Confirm &amp; Pay</button>
+        <button
+          onClick={onPlaceOrder}
+          disabled={isLoading}
+          className="btn-primary flex-1 justify-center py-2 disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {isLoading
+            ? <><span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Processing…</>
+            : <><Receipt size={14} />Confirm &amp; Pay</>}
+        </button>
       </div>
     </div>
   )
@@ -867,7 +875,7 @@ export default function BillingPage() {
             </span>
           )}
         </div>
-        <CartPanel onPlaceOrder={() => placeOrder.mutate()} />
+        <CartPanel onPlaceOrder={() => placeOrder.mutate()} isLoading={placeOrder.isPending} />
       </div>
 
       {/* Mobile: cart overlay drawer */}
@@ -890,7 +898,7 @@ export default function BillingPage() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
-              <CartPanel onPlaceOrder={() => { placeOrder.mutate(); setCartOpen(false) }} />
+              <CartPanel onPlaceOrder={() => { placeOrder.mutate(); setCartOpen(false) }} isLoading={placeOrder.isPending} />
             </div>
           </div>
         </div>
