@@ -177,9 +177,6 @@ function CustomizeModal({ customizableTypes, cart, onClose, onAdd }) {
   const [selected,      setSelected]  = useState({})   // { typeId: foodItemObj }
   const [selectedAddons, setAddons]   = useState([])
 
-  // All items across all customizable types (for cartUsed calculations)
-  const allItems = customizableTypes.flatMap(t => t.items || [])
-
   const localCartUsed = (itemId) => cartUsed(cart, itemId)
 
   // Addons: union of all addons from types that allow_addons
@@ -253,6 +250,14 @@ function CustomizeModal({ customizableTypes, cart, onClose, onAdd }) {
                           const outOfStock     = item.tracks_stock
                             ? (!item.is_available || effectiveAvail <= 0)
                             : !item.is_available
+                          const stockBadge = !outOfStock && item.tracks_stock
+                            ? effectiveAvail > 10
+                              ? { label: '10+ left', cls: 'text-green-600 bg-green-50' }
+                              : effectiveAvail > 3
+                                ? { label: `${effectiveAvail} left`, cls: 'text-orange-500 bg-orange-50' }
+                                : { label: `${effectiveAvail} left`, cls: 'text-red-500 bg-red-50' }
+                            : null
+
                           return (
                             <div
                               key={item.id}
@@ -275,12 +280,16 @@ function CustomizeModal({ customizableTypes, cart, onClose, onAdd }) {
                                   </div>
                                 )}
                               </div>
-                              <p className={`text-xs font-bold mt-1 ${outOfStock ? 'text-gray-400' : 'text-primary-500'}`}>
-                                {rupees(item.price)}
-                                {!outOfStock && item.tracks_stock && effectiveAvail < 5 && (
-                                  <span className="ml-1 text-[10px] text-orange-500">({effectiveAvail})</span>
+                              <div className="flex items-center justify-between mt-1 gap-1">
+                                <p className={`text-xs font-bold ${outOfStock ? 'text-gray-400' : 'text-primary-500'}`}>
+                                  {rupees(item.price)}
+                                </p>
+                                {stockBadge && (
+                                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${stockBadge.cls}`}>
+                                    {stockBadge.label}
+                                  </span>
                                 )}
-                              </p>
+                              </div>
                             </div>
                           )
                         })}
@@ -513,7 +522,6 @@ function MyOrders({ orders, gstRate, token, onRefresh }) {
 // ─── Item row ─────────────────────────────────────────────────────────────────
 
 function ItemRow({ item, cart, onInc, onDec, readOnly = false }) {
-  const used      = cartUsed(cart, item.id)
   const qty       = cart.filter(ci => !ci.is_custom && ci.food_item?.id === item.id)
                        .reduce((s, ci) => s + ci.quantity, 0)
   const avail     = itemAvailable(item, cart)
@@ -640,7 +648,6 @@ function CartSheet({ cart, setCart, onClose, onPlace, placing, gstRate }) {
 
   const subtotal = cart.reduce((s, ci) => s + ci.quantity * (ci.unit_price + ci.addon_unit_price), 0)
   const tax      = subtotal * gstRate
-  const total    = subtotal + tax
 
   const addonItem = addonTarget ? cart.find(ci => ci.cartId === addonTarget) : null
 
