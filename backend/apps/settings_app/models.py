@@ -52,6 +52,12 @@ class RestaurantSettings(models.Model):
         help_text='PIN kitchen staff must enter to cancel or reduce order items (leave blank to disable PIN check)'
     )
 
+    # ── QR Ordering ───────────────────────────────────────
+    qr_ordering_enabled = models.BooleanField(
+        default=True,
+        help_text='Allow customers to place orders by scanning the table QR code. When off, QR shows menu only.'
+    )
+
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

@@ -849,6 +849,7 @@ export default function QROrderPage() {
   const gstRate        = parseFloat(data?.gst_rate ?? 5) / 100
   // Read-only if another device already claimed this session
   const isReadOnly     = !!(data?.session_claimed && !getKey(token))
+  const menuOnly       = data?.qr_ordering_enabled === false
 
   // ── Notify customer when a batch is marked SERVED ────────────────────────────
   useEffect(() => {
@@ -1100,6 +1101,17 @@ export default function QROrderPage() {
       {/* Order status banner (live, polls every 15s) */}
       <OrderStatusBanner orders={data?.session_orders} />
 
+      {/* Menu-only banner — QR ordering disabled in settings */}
+      {menuOnly && (
+        <div className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
+          <UtensilsCrossed size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-amber-800">Menu view only</p>
+            <p className="text-xs text-amber-600 mt-0.5">Ordering via QR is currently disabled. Please ask a staff member to place your order.</p>
+          </div>
+        </div>
+      )}
+
       {/* Read-only banner — another device already claimed this session */}
       {isReadOnly && (
         <div className="mx-4 mt-3 bg-gray-800 border border-gray-600 rounded-xl px-4 py-3 flex items-start gap-3">
@@ -1166,9 +1178,9 @@ export default function QROrderPage() {
                   key={item.id}
                   item={item}
                   cart={cart}
-                  onInc={isReadOnly ? () => {} : incItem}
-                  onDec={isReadOnly ? () => {} : decItem}
-                  readOnly={isReadOnly}
+                  onInc={isReadOnly || menuOnly ? () => {} : incItem}
+                  onDec={isReadOnly || menuOnly ? () => {} : decItem}
+                  readOnly={isReadOnly || menuOnly}
                 />
               ))}
             </div>
@@ -1184,8 +1196,8 @@ export default function QROrderPage() {
         onRefresh={refetch}
       />
 
-      {/* Floating cart bar — hidden in read-only mode */}
-      {cartCount > 0 && !isReadOnly && (
+      {/* Floating cart bar — hidden in read-only / menu-only mode */}
+      {cartCount > 0 && !isReadOnly && !menuOnly && (
         <div className="fixed bottom-0 left-0 right-0 p-4 z-40">
           <button
             onClick={() => setCartOpen(true)}

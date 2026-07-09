@@ -8,7 +8,7 @@ import {
   Percent, Smartphone, Key, Hash,
   MessageCircle, Bell, BellOff, CheckCircle2, XCircle,
   Clock, Save, Settings, Package, Users,
-  ChevronLeft, ChevronRight, Eye, EyeOff,
+  ChevronLeft, ChevronRight, Eye, EyeOff, QrCode, ShoppingCart,
 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -162,20 +162,30 @@ export default function SettingsPage() {
 // Tab 1 — General (Company + Tax)
 // ══════════════════════════════════════════════════════════
 function GeneralTab({ data, save }) {
-  const [form, setForm] = useState({})
+  const [form,       setForm]       = useState({})
+  const [qrEnabled,  setQrEnabled]  = useState(true)
 
   useEffect(() => {
-    if (data) setForm({
-      company_name:    data.company_name    || '',
-      company_phone:   data.company_phone   || '',
-      company_email:   data.company_email   || '',
-      company_address: data.company_address || '',
-      gstin:           data.gstin           || '',
-      gst_rate:        data.gst_rate        ?? 5,
-    })
+    if (data) {
+      setForm({
+        company_name:    data.company_name    || '',
+        company_phone:   data.company_phone   || '',
+        company_email:   data.company_email   || '',
+        company_address: data.company_address || '',
+        gstin:           data.gstin           || '',
+        gst_rate:        data.gst_rate        ?? 5,
+      })
+      setQrEnabled(data.qr_ordering_enabled ?? true)
+    }
   }, [data])
 
   const f = (key, val) => setForm(p => ({ ...p, [key]: val }))
+
+  const toggleQrOrdering = () => {
+    const next = !qrEnabled
+    setQrEnabled(next)
+    save.mutate({ qr_ordering_enabled: next })
+  }
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -234,6 +244,26 @@ function GeneralTab({ data, save }) {
           <FileText size={12} />
           The GST rate set here is used as the default tax rate on all new bills generated.
         </p>
+      </div>
+
+      {/* QR & Table Ordering */}
+      <div className="card">
+        <h2 className="text-base font-semibold text-gray-800 mb-1 flex items-center gap-2">
+          <QrCode size={17} className="text-primary-500" /> QR &amp; Table Ordering
+        </h2>
+        <p className="text-xs text-gray-400 mb-4">Control whether customers can place orders through the table QR code.</p>
+        <AutoToggleRow
+          icon={ShoppingCart}
+          label="Allow customers to order via QR"
+          description={
+            qrEnabled
+              ? 'Customers scan the QR code, browse the menu, and place orders directly. Toggle off to switch to menu-view-only mode.'
+              : 'Menu-view-only mode is active. Customers can see the menu and stock status but cannot place orders themselves.'
+          }
+          checked={qrEnabled}
+          onChange={toggleQrOrdering}
+          saving={save.isPending}
+        />
       </div>
 
       <div className="flex justify-end">

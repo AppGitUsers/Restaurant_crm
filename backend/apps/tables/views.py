@@ -82,12 +82,15 @@ class PublicMenuView(APIView):
                 'items': PublicMenuItemSerializer(ct_items_qs, many=True, context={'request': request}).data,
             })
 
-        # GST rate from restaurant settings
+        # Settings
         try:
             from apps.settings_app.models import RestaurantSettings
-            gst_rate = float(RestaurantSettings.get_settings().gst_rate)
+            _s = RestaurantSettings.get_settings()
+            gst_rate            = float(_s.gst_rate)
+            qr_ordering_enabled = _s.qr_ordering_enabled
         except Exception:
-            gst_rate = 5.0
+            gst_rate            = 5.0
+            qr_ordering_enabled = True
 
         session         = table.get_active_session()
         session_claimed = bool(session and session.session_key)
@@ -124,6 +127,7 @@ class PublicMenuView(APIView):
             'has_active_session':    session is not None,
             'session_claimed':       session_claimed,
             'is_accepting_orders':   table.is_accepting_orders,
+            'qr_ordering_enabled':   qr_ordering_enabled,
             'gst_rate':              gst_rate,
             'categories':            list(grouped.values()),
             'customizable_types':    ct_list,
@@ -155,6 +159,16 @@ class PublicOrderSubmitView(APIView):
                 {'error': 'This table is not currently open for orders. Please ask staff to open the table.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
+
+        try:
+            from apps.settings_app.models import RestaurantSettings
+            if not RestaurantSettings.get_settings().qr_ordering_enabled:
+                return Response(
+                    {'error': 'Online ordering is currently disabled. Please ask staff to place your order.'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        except Exception:
+            pass
 
         serializer = OrderSubmitSerializer(data=request.data)
         if not serializer.is_valid():
