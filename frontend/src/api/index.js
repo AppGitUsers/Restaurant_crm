@@ -191,7 +191,7 @@ export const tablesAPI = {
   sessionDetail: (id)            => client.get(`/tables/sessions/${id}/`),
   addBatch:      (id, data)      => client.post(`/tables/sessions/${id}/add_batch/`, data),
   bill:          (id, data)      => client.post(`/tables/sessions/${id}/bill/`, data),
-  endSession:    (id)            => client.post(`/tables/sessions/${id}/end/`),
+  endSession:    (id, data = {}) => client.post(`/tables/sessions/${id}/end/`, data),
 
   // Kitchen
   kitchen: {
@@ -200,6 +200,12 @@ export const tablesAPI = {
     updateStatus:  (id, status)             => client.patch(`/kitchen/batches/${id}/`, { status }),
     cancelItem:    (itemId, pin, restoreStock) => client.post(`/kitchen/items/${itemId}/cancel/`, { pin, restore_stock: restoreStock }),
     reduceItem:    (itemId, newQty, pin, restoreStock) => client.post(`/kitchen/items/${itemId}/reduce/`, { pin, new_quantity: newQty, restore_stock: restoreStock }),
+  },
+
+  // Biller item actions (PENDING_PAYMENT batches only)
+  biller: {
+    cancelItem: (itemId, pin, restoreStock = false) => client.post(`/biller/items/${itemId}/cancel/`, { pin, restore_stock: restoreStock }),
+    reduceItem: (itemId, newQty, pin, restoreStock = false) => client.post(`/biller/items/${itemId}/reduce/`, { pin, new_quantity: newQty, restore_stock: restoreStock }),
   },
 
   // Public (no auth) — uses publicClient so no token is attached

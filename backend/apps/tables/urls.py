@@ -12,6 +12,8 @@ urlpatterns = [
     path('kitchen/batches/<int:batch_id>/',             views.KitchenBatchUpdateView.as_view(), name='kitchen-batch-update'),
     path('kitchen/items/<int:item_id>/cancel/',         views.KitchenCancelItemView.as_view(),  name='kitchen-item-cancel'),
     path('kitchen/items/<int:item_id>/reduce/',         views.KitchenReduceItemView.as_view(),  name='kitchen-item-reduce'),
+    path('biller/items/<int:item_id>/cancel/',          views.BillerCancelItemView.as_view(),   name='biller-item-cancel'),
+    path('biller/items/<int:item_id>/reduce/',          views.BillerReduceItemView.as_view(),   name='biller-item-reduce'),
 
     # Public — customer notification ack
     path('public/table/<uuid:qr_token>/notifications/ack/', views.CustomerAckNotificationView.as_view(), name='customer-ack-notification'),

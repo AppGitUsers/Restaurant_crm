@@ -323,6 +323,7 @@ class PublicOrderSubmitView(APIView):
                     session=session,
                     added_by=TableOrderBatch.AddedBy.CUSTOMER,
                     notes=batch_notes,
+                    status=TableOrderBatch.Status.PENDING_PAYMENT,
                 )
 
                 for d in items_data:
@@ -451,7 +452,7 @@ class PublicBatchCancelView(APIView):
             except TableOrderBatch.DoesNotExist:
                 return Response({'error': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-            if batch.status != TableOrderBatch.Status.PENDING:
+            if batch.status not in (TableOrderBatch.Status.PENDING, TableOrderBatch.Status.PENDING_PAYMENT):
                 return Response(
                     {'error': 'This order is already being prepared and cannot be cancelled.'},
                     status=status.HTTP_409_CONFLICT,
@@ -542,6 +543,13 @@ class _StockError(Exception):
     """Sentinel used to trigger atomic rollback on stock validation failure."""
 
 
+class _CancelError(Exception):
+    """Raised inside transaction.atomic() to surface item-cancel validation failures."""
+    def __init__(self, message, http_status):
+        self.message     = message
+        self.http_status = http_status
+
+
 # ── Kitchen: authenticated display + status update endpoints ────────────────
 
 class KitchenBatchListView(APIView):
@@ -568,7 +576,7 @@ class KitchenBatchListView(APIView):
 
         batches = list(
             TableOrderBatch.objects
-            .exclude(status=TableOrderBatch.Status.SERVED)
+            .exclude(status__in=[TableOrderBatch.Status.SERVED, TableOrderBatch.Status.PENDING_PAYMENT])
             .select_related('session__table', 'billing_order')
             .prefetch_related('items__food_item')
             .order_by('placed_at')
@@ -666,6 +674,86 @@ def _reverse_item_stock(item, qty_to_reverse):
         )
 
 
+def _get_locked_item(item_id):
+    """Fetch a TableOrderItem with a row-level lock and all relations needed for cancel/reduce."""
+    return (TableOrderItem.objects
+            .select_for_update(of=('self',))
+            .select_related('batch__session__table', 'food_item')
+            .prefetch_related(
+                'food_item__recipe_ingredients',
+                'food_item__combo_components__component__recipe_ingredients',
+            )
+            .get(pk=item_id))
+
+
+def _do_cancel_item(item, restore_stock):
+    """
+    Mark item cancelled, optionally restore stock, notify customer.
+    Must be called inside transaction.atomic() with item already locked.
+    Raises _CancelError on validation failure.
+    """
+    if item.cancelled_by_kitchen:
+        raise _CancelError('Item already cancelled.', status.HTTP_400_BAD_REQUEST)
+
+    if restore_stock:
+        _reverse_item_stock(item, item.quantity)
+
+    item.cancelled_by_kitchen = True
+    item.cancelled_at         = timezone.now()
+    item.save(update_fields=['cancelled_by_kitchen', 'cancelled_at'])
+
+    item_name = item.food_item.name if item.food_item_id else (item.custom_name or 'Custom Item')
+    if item.batch.session_id:
+        KitchenNotification.objects.create(
+            session=item.batch.session,
+            message=f"Sorry, {item_name} ×{item.quantity} has been removed from your order.",
+        )
+
+
+def _do_reduce_item(item, new_quantity, restore_stock):
+    """
+    Reduce item quantity, optionally restore difference in stock, notify customer.
+    Must be called inside transaction.atomic() with item already locked.
+    Raises _CancelError on validation failure.
+    """
+    if item.cancelled_by_kitchen:
+        raise _CancelError('Item already cancelled.', status.HTTP_400_BAD_REQUEST)
+
+    if new_quantity >= item.quantity:
+        raise _CancelError(
+            f'New quantity must be less than current quantity ({item.quantity}).',
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+    qty_diff      = item.quantity - new_quantity
+    orig_quantity = item.quantity
+    item_name     = item.food_item.name if item.food_item_id else (item.custom_name or 'Custom Item')
+
+    if restore_stock:
+        _reverse_item_stock(item, qty_diff)
+
+    item.quantity = new_quantity
+    item.save(update_fields=['quantity'])
+
+    if item.batch.session_id:
+        KitchenNotification.objects.create(
+            session=item.batch.session,
+            message=f"Sorry, {item_name} quantity reduced from {orig_quantity} to {new_quantity} — only {new_quantity} available.",
+        )
+
+
+def _refresh_makeable_counts():
+    """Recalculate makeable_count for all active food items. Call outside transaction.atomic()."""
+    try:
+        from apps.menu.models import FoodItem as FI
+        for food in FI.objects.filter(is_active=True, is_combo=False):
+            food.update_makeable_count()
+        for food in FI.objects.filter(is_active=True, is_combo=True):
+            food.update_makeable_count()
+    except Exception:
+        pass
+
+
 class KitchenCancelItemView(APIView):
     """Kitchen cancels a single item. Optionally restores stock when restore_stock=true."""
     permission_classes = [IsAdminOrBillerOrKitchen]
@@ -677,45 +765,18 @@ class KitchenCancelItemView(APIView):
         if not _validate_kitchen_pin(pin, request.user):
             return Response({'error': 'Incorrect PIN.'}, status=status.HTTP_403_FORBIDDEN)
 
-        with transaction.atomic():
-            try:
-                item = (TableOrderItem.objects
-                        .select_for_update(of=('self',))
-                        .select_related('batch__session__table', 'food_item')
-                        .prefetch_related(
-                            'food_item__recipe_ingredients',
-                            'food_item__combo_components__component__recipe_ingredients',
-                        )
-                        .get(pk=item_id))
-            except TableOrderItem.DoesNotExist:
-                return Response({'error': 'Item not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-            if item.cancelled_by_kitchen:
-                return Response({'error': 'Item already cancelled.'}, status=status.HTTP_400_BAD_REQUEST)
-
-            if restore_stock:
-                _reverse_item_stock(item, item.quantity)
-
-            item.cancelled_by_kitchen = True
-            item.cancelled_at         = timezone.now()
-            item.save(update_fields=['cancelled_by_kitchen', 'cancelled_at'])
-
-            item_name = item.food_item.name if item.food_item_id else (item.custom_name or 'Custom Item')
-            if item.batch.session_id:
-                KitchenNotification.objects.create(
-                    session=item.batch.session,
-                    message=f"Sorry, {item_name} ×{item.quantity} could not be prepared and has been removed from your order.",
-                )
+        try:
+            with transaction.atomic():
+                try:
+                    item = _get_locked_item(item_id)
+                except TableOrderItem.DoesNotExist:
+                    return Response({'error': 'Item not found.'}, status=status.HTTP_404_NOT_FOUND)
+                _do_cancel_item(item, restore_stock)
+        except _CancelError as e:
+            return Response({'error': e.message}, status=e.http_status)
 
         if restore_stock:
-            try:
-                from apps.menu.models import FoodItem as FI
-                for food in FI.objects.filter(is_active=True, is_combo=False):
-                    food.update_makeable_count()
-                for food in FI.objects.filter(is_active=True, is_combo=True):
-                    food.update_makeable_count()
-            except Exception:
-                pass
+            _refresh_makeable_counts()
 
         return Response({'message': 'Item cancelled.', 'item_id': item_id})
 
@@ -739,52 +800,90 @@ class KitchenReduceItemView(APIView):
         except (TypeError, ValueError):
             return Response({'error': 'new_quantity must be a positive integer.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        with transaction.atomic():
-            try:
-                item = (TableOrderItem.objects
-                        .select_for_update(of=('self',))
-                        .select_related('batch__session__table', 'food_item')
-                        .prefetch_related(
-                            'food_item__recipe_ingredients',
-                            'food_item__combo_components__component__recipe_ingredients',
-                        )
-                        .get(pk=item_id))
-            except TableOrderItem.DoesNotExist:
-                return Response({'error': 'Item not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-            if item.cancelled_by_kitchen:
-                return Response({'error': 'Item already cancelled.'}, status=status.HTTP_400_BAD_REQUEST)
-
-            if new_quantity >= item.quantity:
-                return Response(
-                    {'error': f'New quantity must be less than current quantity ({item.quantity}).'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            qty_diff  = item.quantity - new_quantity
-            item_name = item.food_item.name if item.food_item_id else (item.custom_name or 'Custom Item')
-
-            if restore_stock:
-                _reverse_item_stock(item, qty_diff)
-
-            item.quantity = new_quantity
-            item.save(update_fields=['quantity'])
-
-            if item.batch.session_id:
-                KitchenNotification.objects.create(
-                    session=item.batch.session,
-                    message=f"Sorry, {item_name} quantity reduced from {item.quantity + qty_diff} to {new_quantity} — only {new_quantity} available.",
-                )
+        try:
+            with transaction.atomic():
+                try:
+                    item = _get_locked_item(item_id)
+                except TableOrderItem.DoesNotExist:
+                    return Response({'error': 'Item not found.'}, status=status.HTTP_404_NOT_FOUND)
+                _do_reduce_item(item, new_quantity, restore_stock)
+        except _CancelError as e:
+            return Response({'error': e.message}, status=e.http_status)
 
         if restore_stock:
-            try:
-                from apps.menu.models import FoodItem as FI
-                for food in FI.objects.filter(is_active=True, is_combo=False):
-                    food.update_makeable_count()
-                for food in FI.objects.filter(is_active=True, is_combo=True):
-                    food.update_makeable_count()
-            except Exception:
-                pass
+            _refresh_makeable_counts()
+
+        return Response({'message': 'Quantity reduced.', 'item_id': item_id, 'new_quantity': new_quantity})
+
+
+class BillerCancelItemView(APIView):
+    """Biller cancels a single item from a PENDING_PAYMENT batch. Always restores stock."""
+    permission_classes = [IsAdminOrBiller]
+
+    def post(self, request, item_id):
+        pin           = request.data.get('pin', '')
+        restore_stock = bool(request.data.get('restore_stock', True))
+
+        if not _validate_kitchen_pin(pin, request.user):
+            return Response({'error': 'Incorrect PIN.'}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            with transaction.atomic():
+                try:
+                    item = _get_locked_item(item_id)
+                except TableOrderItem.DoesNotExist:
+                    return Response({'error': 'Item not found.'}, status=status.HTTP_404_NOT_FOUND)
+                if item.batch.status != TableOrderBatch.Status.PENDING_PAYMENT:
+                    raise _CancelError(
+                        'Order is no longer awaiting payment. Ask kitchen to cancel if needed.',
+                        status.HTTP_409_CONFLICT,
+                    )
+                _do_cancel_item(item, restore_stock)
+        except _CancelError as e:
+            return Response({'error': e.message}, status=e.http_status)
+
+        if restore_stock:
+            _refresh_makeable_counts()
+
+        return Response({'message': 'Item cancelled.', 'item_id': item_id})
+
+
+class BillerReduceItemView(APIView):
+    """Biller reduces quantity of a single item from a PENDING_PAYMENT batch. Always restores stock difference."""
+    permission_classes = [IsAdminOrBiller]
+
+    def post(self, request, item_id):
+        pin           = request.data.get('pin', '')
+        new_quantity  = request.data.get('new_quantity')
+        restore_stock = bool(request.data.get('restore_stock', True))
+
+        if not _validate_kitchen_pin(pin, request.user):
+            return Response({'error': 'Incorrect PIN.'}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            new_quantity = int(new_quantity)
+            if new_quantity < 1:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response({'error': 'new_quantity must be a positive integer.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                try:
+                    item = _get_locked_item(item_id)
+                except TableOrderItem.DoesNotExist:
+                    return Response({'error': 'Item not found.'}, status=status.HTTP_404_NOT_FOUND)
+                if item.batch.status != TableOrderBatch.Status.PENDING_PAYMENT:
+                    raise _CancelError(
+                        'Order is no longer awaiting payment. Ask kitchen to reduce if needed.',
+                        status.HTTP_409_CONFLICT,
+                    )
+                _do_reduce_item(item, new_quantity, restore_stock)
+        except _CancelError as e:
+            return Response({'error': e.message}, status=e.http_status)
+
+        if restore_stock:
+            _refresh_makeable_counts()
 
         return Response({'message': 'Quantity reduced.', 'item_id': item_id, 'new_quantity': new_quantity})
 
@@ -920,7 +1019,10 @@ class TableSessionAddBatchView(APIView):
 
                 from apps.inventory.models import StockTransaction
                 batch = TableOrderBatch.objects.create(
-                    session=session, added_by=TableOrderBatch.AddedBy.BILLER, notes=batch_notes
+                    session=session,
+                    added_by=TableOrderBatch.AddedBy.BILLER,
+                    notes=batch_notes,
+                    status=TableOrderBatch.Status.PENDING,
                 )
                 for d in items_data:
                     fi  = food_map[d['food_item'].id]
@@ -977,111 +1079,115 @@ class TableSessionAddBatchView(APIView):
 
 class TableSessionBillView(APIView):
     """
-    Close an open session: create a PAID Order from all session items,
-    link it to the session, and close the session.
-
-    Stock is NOT deducted here — it was deducted at QR submission time (Phase 2).
-    The billing signal detects `table_session_id` and skips stock deduction,
-    but still creates the Finance income record and Customer visit.
+    Biller releases PENDING_PAYMENT batches to the kitchen after collecting payment.
+    Session stays OPEN — no billing, no close. Customer can keep ordering.
     """
     permission_classes = [IsAdminOrBiller]
 
     def post(self, request, session_id):
-        session = get_object_or_404(
-            TableSession, pk=session_id,
-            status__in=[TableSession.Status.OPEN, TableSession.Status.CLOSED],
-        )
+        session = get_object_or_404(TableSession, pk=session_id, status=TableSession.Status.OPEN)
 
-        payment_method = request.data.get('payment_method', 'CASH')
-        discount       = request.data.get('discount', 0)
-        customer_name  = request.data.get('customer_name', '')
-        customer_phone = request.data.get('customer_phone', '')
+        released = session.batches.filter(
+            status=TableOrderBatch.Status.PENDING_PAYMENT
+        ).update(status=TableOrderBatch.Status.PENDING)
 
-        # Collect all non-cancelled items from all batches in the session
-        all_batch_items = []
-        for batch in session.batches.prefetch_related('items__food_item').all():
-            for item in batch.items.all():
-                if not item.cancelled_by_kitchen:
-                    all_batch_items.append(item)
+        if released == 0:
+            return Response({'error': 'No orders awaiting payment.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not all_batch_items:
-            return Response({'error': 'No items in this session'}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            tax_percent = __import__(
-                'apps.settings_app.models', fromlist=['RestaurantSettings']
-            ).RestaurantSettings.get_settings().gst_rate
-        except Exception:
-            tax_percent = 5.00
-
-        from apps.billing.models import Order, OrderItem
-        from django.utils import timezone
-
-        with transaction.atomic():
-            order = Order.objects.create(
-                biller         = request.user,
-                customer_name  = customer_name,
-                customer_phone = customer_phone,
-                payment_method = payment_method,
-                discount       = discount,
-                tax_percent    = tax_percent,
-                table_session  = session,
-            )
-
-            for item in all_batch_items:
-                OrderItem.objects.create(
-                    order            = order,
-                    food_item        = item.food_item,
-                    quantity         = item.quantity,
-                    unit_price       = item.unit_price,
-                    addon_unit_price = item.addon_unit_price,
-                    notes            = item.notes,
-                )
-
-            order.recalculate_totals()
-            order.status = Order.Status.PAID
-            order.save(update_fields=['status'])
-
-            session.discount     = discount
-            session.status       = TableSession.Status.BILLED
-            session.session_key  = ''
-            session.closed_at    = timezone.now()
-            session.save(update_fields=['discount', 'status', 'session_key', 'closed_at'])
-
-            session.table.is_accepting_orders = False
-            session.table.save(update_fields=['is_accepting_orders'])
-
-        # WhatsApp bill notification — non-blocking, never breaks the billing flow
-        try:
-            from apps.notifications.utils import send_bill_notification
-            send_bill_notification(order)
-        except Exception:
-            pass
-
-        from apps.billing.serializers import OrderSerializer
-        return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
+        return Response({'released': released})
 
 
 # ── Biller: manually end a session (without billing) ────────────────────────
 
 class TableSessionEndView(APIView):
     """
-    Biller closes an open session without generating a bill.
-    Sets status → CLOSED and clears session_key so a new party can claim
-    the table. The session data stays intact and can still be billed later.
+    Biller closes the session with final billing.
+    Blocked if any PENDING_PAYMENT batch exists — release them to the kitchen first.
+    Creates a PAID Order from all non-cancelled session items and fires the income signal.
+    If no items exist (all cancelled), closes without billing.
     """
     permission_classes = [IsAdminOrBiller]
 
     def post(self, request, session_id):
         session = get_object_or_404(TableSession, pk=session_id, status=TableSession.Status.OPEN)
-        from django.utils import timezone
-        session.status      = TableSession.Status.CLOSED
-        session.session_key = ''
-        session.closed_at   = timezone.now()
-        session.save(update_fields=['status', 'session_key', 'closed_at'])
 
-        session.table.is_accepting_orders = False
-        session.table.save(update_fields=['is_accepting_orders'])
+        if session.batches.filter(status=TableOrderBatch.Status.PENDING_PAYMENT).exists():
+            return Response(
+                {'error': 'Some orders are still awaiting payment. Release them to kitchen before ending the session.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payment_method = request.data.get('payment_method', 'CASH')
+        discount       = request.data.get('discount', 0)
+        customer_name  = request.data.get('customer_name', '')
+        customer_phone = request.data.get('customer_phone', '')
+
+        all_batch_items = []
+        for batch in session.batches.prefetch_related('items__food_item').all():
+            for item in batch.items.all():
+                if not item.cancelled_by_kitchen:
+                    all_batch_items.append(item)
+
+        with transaction.atomic():
+            order = None
+
+            if all_batch_items:
+                try:
+                    tax_percent = __import__(
+                        'apps.settings_app.models', fromlist=['RestaurantSettings']
+                    ).RestaurantSettings.get_settings().gst_rate
+                except Exception:
+                    tax_percent = 5.00
+
+                from apps.billing.models import Order, OrderItem
+
+                order = Order.objects.create(
+                    biller         = request.user,
+                    customer_name  = customer_name,
+                    customer_phone = customer_phone,
+                    payment_method = payment_method,
+                    discount       = discount,
+                    tax_percent    = tax_percent,
+                    table_session  = session,
+                )
+
+                for item in all_batch_items:
+                    OrderItem.objects.create(
+                        order            = order,
+                        food_item        = item.food_item,
+                        quantity         = item.quantity,
+                        unit_price       = item.unit_price,
+                        addon_unit_price = item.addon_unit_price,
+                        notes            = item.notes,
+                    )
+
+                order.recalculate_totals()
+                order.status = Order.Status.PAID
+                order.save(update_fields=['status'])
+
+                session.discount = discount
+
+            save_fields = ['status', 'session_key', 'closed_at']
+            if all_batch_items:
+                save_fields.append('discount')
+
+            session.status      = TableSession.Status.BILLED if all_batch_items else TableSession.Status.CLOSED
+            session.session_key = ''
+            session.closed_at   = timezone.now()
+            session.save(update_fields=save_fields)
+
+            session.table.is_accepting_orders = False
+            session.table.save(update_fields=['is_accepting_orders'])
+
+        if order:
+            try:
+                from apps.notifications.utils import send_bill_notification
+                send_bill_notification(order)
+            except Exception:
+                pass
+
+            from apps.billing.serializers import OrderSerializer
+            return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
 
         return Response({'status': 'closed', 'session_id': session.id})
 

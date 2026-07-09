@@ -68,9 +68,10 @@ class TableSession(models.Model):
 
 class TableOrderBatch(models.Model):
     class Status(models.TextChoices):
-        PENDING   = 'PENDING',   'Pending'
-        PREPARING = 'PREPARING', 'Preparing'
-        SERVED    = 'SERVED',    'Served'
+        PENDING_PAYMENT = 'PENDING_PAYMENT', 'Pending Payment'
+        PENDING         = 'PENDING',         'Pending'
+        PREPARING       = 'PREPARING',       'Preparing'
+        SERVED          = 'SERVED',          'Served'
 
     class AddedBy(models.TextChoices):
         CUSTOMER = 'CUSTOMER', 'Customer'
@@ -78,7 +79,7 @@ class TableOrderBatch(models.Model):
 
     session       = models.ForeignKey(TableSession, on_delete=models.CASCADE, related_name='batches', null=True, blank=True)
     billing_order = models.OneToOneField('billing.Order', on_delete=models.SET_NULL, null=True, blank=True, related_name='kitchen_batch')
-    status        = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    status        = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     added_by      = models.CharField(max_length=10, choices=AddedBy.choices, default=AddedBy.CUSTOMER)
     placed_at     = models.DateTimeField(auto_now_add=True)
     served_at     = models.DateTimeField(null=True, blank=True)

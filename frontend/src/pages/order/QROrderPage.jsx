@@ -83,9 +83,10 @@ function usePublicMenu(token) {
 function OrderStatusBanner({ orders }) {
   if (!orders || orders.length === 0) return null
 
-  const allServed    = orders.every(b => b.status === 'SERVED')
-  const anyServed    = orders.some(b  => b.status === 'SERVED')
-  const anyPreparing = orders.some(b  => b.status === 'PREPARING')
+  const allServed         = orders.every(b => b.status === 'SERVED')
+  const anyServed         = orders.some(b  => b.status === 'SERVED')
+  const anyPreparing      = orders.some(b  => b.status === 'PREPARING')
+  const anyPendingPayment = orders.some(b  => b.status === 'PENDING_PAYMENT')
 
   let bg, icon, message
   if (allServed) {
@@ -97,6 +98,9 @@ function OrderStatusBanner({ orders }) {
   } else if (anyPreparing) {
     bg = 'bg-blue-500'; icon = '👨‍🍳'
     message = 'Kitchen is preparing your order…'
+  } else if (anyPendingPayment) {
+    bg = 'bg-purple-500'; icon = '💳'
+    message = 'Order received — please pay at the counter to confirm.'
   } else {
     bg = 'bg-amber-500'; icon = '⏳'
     message = 'Order received — kitchen will start soon.'
@@ -364,9 +368,10 @@ function CustomizeModal({ customizableTypes, cart, onClose, onAdd }) {
 // ─── My Orders with cancel window ─────────────────────────────────────────────
 
 const STATUS_META = {
-  PENDING:   { label: 'Pending',   icon: Clock,        color: 'text-amber-500', bg: 'bg-amber-50',  border: 'border-amber-200' },
-  PREPARING: { label: 'Preparing', icon: ChefHat,      color: 'text-blue-500',  bg: 'bg-blue-50',   border: 'border-blue-200' },
-  SERVED:    { label: 'Served',    icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-50',  border: 'border-green-200' },
+  PENDING_PAYMENT: { label: 'Awaiting Payment', icon: Lock,         color: 'text-purple-500', bg: 'bg-purple-50',  border: 'border-purple-200' },
+  PENDING:         { label: 'Pending',          icon: Clock,        color: 'text-amber-500',  bg: 'bg-amber-50',   border: 'border-amber-200' },
+  PREPARING:       { label: 'Preparing',        icon: ChefHat,      color: 'text-blue-500',   bg: 'bg-blue-50',    border: 'border-blue-200' },
+  SERVED:          { label: 'Served',           icon: CheckCircle2, color: 'text-green-500',  bg: 'bg-green-50',   border: 'border-green-200' },
 }
 
 const CANCEL_WINDOW_SEC = 120  // 2 minutes
@@ -382,7 +387,7 @@ function CancelButton({ batch, token, onCancelled }) {
   }, [start])
 
   const remaining = CANCEL_WINDOW_SEC - secs
-  if (remaining <= 0 || batch.status !== 'PENDING') return null
+  if (remaining <= 0 || batch.status !== 'PENDING_PAYMENT') return null
 
   const mm = String(Math.floor(remaining / 60)).padStart(2, '0')
   const ss = String(remaining % 60).padStart(2, '0')
@@ -449,7 +454,7 @@ function MyOrders({ orders, gstRate, token, onRefresh }) {
               <div className={`flex items-center justify-between px-4 py-2.5 border-b ${meta.border}`}>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-gray-700">Order {idx + 1}</span>
-                  {batch.status === 'PENDING' && (
+                  {batch.status === 'PENDING_PAYMENT' && (
                     <CancelButton batch={batch} token={token} onCancelled={onRefresh} />
                   )}
                 </div>

@@ -3,14 +3,22 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { tablesAPI, menuAPI, customersAPI, settingsAPI, billingAPI } from '@/api'
 import { PageLoader, Modal, Field } from '@/components/ui'
-import { ArrowLeft, Plus, Minus, CreditCard, ChefHat, Check, Loader2, CheckCircle, MessageCircle } from 'lucide-react'
+import { ArrowLeft, Plus, Minus, CreditCard, ChefHat, Check, Loader2, CheckCircle, MessageCircle, X, Lock } from 'lucide-react'
 import { formatDistanceToNow, parseISO, format } from 'date-fns'
 import toast from 'react-hot-toast'
 
 const BATCH_STATUS_STYLE = {
-  PENDING:   'bg-amber-100 text-amber-700',
-  PREPARING: 'bg-blue-100 text-blue-700',
-  SERVED:    'bg-green-100 text-green-700',
+  PENDING_PAYMENT: 'bg-purple-100 text-purple-700',
+  PENDING:         'bg-amber-100 text-amber-700',
+  PREPARING:       'bg-blue-100 text-blue-700',
+  SERVED:          'bg-green-100 text-green-700',
+}
+
+const BATCH_STATUS_LABEL = {
+  PENDING_PAYMENT: 'Awaiting Payment',
+  PENDING:         'Pending',
+  PREPARING:       'Preparing',
+  SERVED:          'Served',
 }
 
 // ── Add Items Modal ──────────────────────────────────────────────────────────
@@ -151,7 +159,7 @@ function AddItemsModal({ open, onClose, sessionId }) {
 }
 
 // ── Bill Confirm Modal ───────────────────────────────────────────────────────
-function BillModal({ open, onClose, session, gstRate, onBill }) {
+function BillModal({ open, onClose, session, gstRate, onBill, title = 'Collect Payment' }) {
   const [method,  setMethod]  = useState('CASH')
   const [phone,   setPhone]   = useState('')
   const [name,    setName]    = useState('')
@@ -184,7 +192,7 @@ function BillModal({ open, onClose, session, gstRate, onBill }) {
     <Modal
       open={open}
       onClose={onClose}
-      title="Collect Payment"
+      title={title}
       size="md"
       footer={
         <>
@@ -383,17 +391,169 @@ function TableBillReceiptModal({ open, onClose, order }) {
   )
 }
 
+// ── Biller Item Action Modal ─────────────────────────────────────────────────
+// Handles both cancel and reduce for PENDING_PAYMENT batch items.
+function BillerItemActionModal({ open, onClose, item, sessionId, onDone }) {
+  const [action,        setAction]        = useState('cancel')  // 'cancel' | 'reduce'
+  const [newQty,        setNewQty]        = useState(1)
+  const [pin,           setPin]           = useState('')
+  const [restoreStock,  setRestoreStock]  = useState(false)
+  const [busy,          setBusy]          = useState(false)
+  const qc = useQueryClient()
+
+  // Reset state whenever the modal opens on a new item
+  useEffect(() => {
+    if (open) { setAction('cancel'); setPin(''); setNewQty(1); setRestoreStock(false) }
+  }, [open, item?.id])
+
+  if (!item) return null
+
+  const itemName = item.food_item_name
+  const maxQty   = item.quantity - 1  // reduce must result in at least 1
+
+  const handleSubmit = async () => {
+    if (!pin) { toast.error('Enter your PIN'); return }
+    if (action === 'reduce' && (newQty < 1 || newQty >= item.quantity)) {
+      toast.error(`New quantity must be between 1 and ${item.quantity - 1}`)
+      return
+    }
+    setBusy(true)
+    try {
+      if (action === 'cancel') {
+        await tablesAPI.biller.cancelItem(item.id, pin, restoreStock)
+        toast.success(`${itemName} removed from order`)
+      } else {
+        await tablesAPI.biller.reduceItem(item.id, newQty, pin, restoreStock)
+        toast.success(`${itemName} quantity reduced to ${newQty}`)
+      }
+      qc.invalidateQueries(['table-session', sessionId])
+      onDone()
+      onClose()
+    } catch (err) {
+      const msg = err?.response?.data?.error
+      toast.error(msg || 'Action failed. Try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Modify Customer Order" size="sm"
+      footer={<>
+        <button onClick={onClose} className="btn-ghost" disabled={busy}>Cancel</button>
+        <button
+          onClick={handleSubmit}
+          disabled={busy || !pin}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-semibold disabled:opacity-40 transition-colors ${
+            action === 'cancel' ? 'bg-red-500 hover:bg-red-600' : 'bg-amber-500 hover:bg-amber-600'
+          }`}
+        >
+          {busy ? <Loader2 size={14} className="animate-spin" /> : null}
+          {action === 'cancel' ? 'Remove Item' : 'Reduce Qty'}
+        </button>
+      </>}
+    >
+      <div className="space-y-4">
+        <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm">
+          <p className="font-semibold text-gray-800">{itemName}</p>
+          <p className="text-gray-400 text-xs mt-0.5">Current quantity: {item.quantity}</p>
+        </div>
+
+        {/* Action toggle */}
+        <div className="flex gap-2">
+          {['cancel', 'reduce'].map(a => (
+            <button
+              key={a}
+              onClick={() => setAction(a)}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                action === a
+                  ? a === 'cancel'
+                    ? 'bg-red-500 text-white border-red-500'
+                    : 'bg-amber-500 text-white border-amber-500'
+                  : 'border-gray-300 text-gray-600 hover:border-gray-400'
+              }`}
+            >
+              {a === 'cancel' ? 'Remove Item' : 'Reduce Qty'}
+            </button>
+          ))}
+        </div>
+
+        {/* Quantity input for reduce */}
+        {action === 'reduce' && (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">New Quantity</label>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setNewQty(q => Math.max(1, q - 1))}
+                className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200"
+              >
+                <Minus size={14} />
+              </button>
+              <span className="w-8 text-center font-bold text-gray-800 text-lg">{newQty}</span>
+              <button
+                onClick={() => setNewQty(q => Math.min(maxQty, q + 1))}
+                className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200"
+              >
+                <Plus size={14} />
+              </button>
+              <span className="text-xs text-gray-400 ml-1">(max {maxQty})</span>
+            </div>
+          </div>
+        )}
+
+        {/* Restore stock toggle */}
+        <button
+          type="button"
+          onClick={() => setRestoreStock(s => !s)}
+          className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors ${
+            restoreStock
+              ? 'bg-green-50 border-green-300 text-green-700'
+              : 'bg-gray-50 border-gray-200 text-gray-500'
+          }`}
+        >
+          <span className="text-sm font-medium">Restore stock to inventory?</span>
+          <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0 ${restoreStock ? 'bg-green-500' : 'bg-gray-300'}`}>
+            <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${restoreStock ? 'left-5' : 'left-0.5'}`} />
+          </div>
+        </button>
+        <p className="text-xs text-gray-400 -mt-2">
+          {restoreStock
+            ? 'Stock will be added back — use this if the item was cancelled before reaching the kitchen.'
+            : 'Stock stays deducted — use this if the ingredient was already used or wasted.'}
+        </p>
+
+        {/* PIN input */}
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            <Lock size={11} className="inline mr-1" />Your PIN (login password)
+          </label>
+          <input
+            type="password"
+            className="input"
+            placeholder="••••••"
+            value={pin}
+            onChange={e => setPin(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+            autoFocus
+          />
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function TableBillPage() {
   const { sessionId } = useParams()
   const navigate      = useNavigate()
   const qc            = useQueryClient()
 
-  const [discount,        setDiscount]        = useState(0)
-  const [addOpen,         setAddOpen]         = useState(false)
-  const [billOpen,        setBillOpen]        = useState(false)
-  const [endConfirmOpen,  setEndConfirmOpen]  = useState(false)
-  const [billedOrder,     setBilledOrder]     = useState(null)
+  const [discount,            setDiscount]            = useState(0)
+  const [addOpen,             setAddOpen]             = useState(false)
+  const [billOpen,            setBillOpen]            = useState(false)
+  const [releaseConfirmOpen,  setReleaseConfirmOpen]  = useState(false)
+  const [billedOrder,         setBilledOrder]         = useState(null)
+  const [itemActionItem,      setItemActionItem]      = useState(null)
 
   const { data: settings } = useQuery({
     queryKey: ['restaurant-settings'],
@@ -409,24 +569,36 @@ export default function TableBillPage() {
     refetchInterval: 15_000,
   })
 
-  const billMutation = useMutation({
-    mutationFn: (data) => tablesAPI.bill(sessionId, { ...data, discount }),
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ['tables-grid'] })
-      setBilledOrder(res.data)
+  // Release PENDING_PAYMENT batches to kitchen (payment already collected, session stays open)
+  const releaseMutation = useMutation({
+    mutationFn: () => tablesAPI.bill(sessionId, {}),
+    onSuccess: () => {
+      qc.invalidateQueries(['table-session', sessionId])
+      qc.invalidateQueries(['tables-grid'])
+      toast.success('Order sent to kitchen.')
     },
-    onError: () => toast.error('Billing failed. Please try again.'),
+    onError: (err) => {
+      const msg = err?.response?.data?.error
+      toast.error(msg || 'Failed to release order.')
+    },
   })
 
+  // End session with final billing — creates Order, fires signal, closes session
   const endMutation = useMutation({
-    mutationFn: () => tablesAPI.endSession(sessionId),
-    onSuccess: () => {
-      qc.invalidateQueries(['tables-grid'])
-      qc.invalidateQueries(['table-session', sessionId])
-      toast.success('Session ended — table is free for new customers.')
-      navigate('/billing/tables')
+    mutationFn: (data) => tablesAPI.endSession(sessionId, { ...data, discount }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['tables-grid'] })
+      if (res.data?.order_number) {
+        setBilledOrder(res.data)
+      } else {
+        toast.success('Session ended — table is free for new customers.')
+        navigate('/billing/tables')
+      }
     },
-    onError: () => toast.error('Failed to end session.'),
+    onError: (err) => {
+      const msg = err?.response?.data?.error
+      toast.error(msg || 'Failed to end session.')
+    },
   })
 
   if (isLoading) return <PageLoader />
@@ -450,12 +622,20 @@ export default function TableBillPage() {
     )
   }
 
-  const isBilled = session.status === 'BILLED'
-  const subtotal = parseFloat(session.subtotal)
-  const disc     = parseFloat(discount) || 0
-  const taxable  = Math.max(0, subtotal - disc)
-  const tax      = taxable * gstRate
-  const total    = taxable + tax
+  const isBilled          = session.status === 'BILLED'
+  const subtotal          = parseFloat(session.subtotal)
+  const disc              = parseFloat(discount) || 0
+  const taxable           = Math.max(0, subtotal - disc)
+  const tax               = taxable * gstRate
+  const total             = taxable + tax
+  const hasPendingPayment = session.batches.some(b => b.status === 'PENDING_PAYMENT')
+  const pendingPaymentTotal = session.batches
+    .filter(b => b.status === 'PENDING_PAYMENT')
+    .reduce((sum, batch) =>
+      sum + batch.items
+        .filter(item => !item.cancelled_by_kitchen)
+        .reduce((s, item) => s + parseFloat(item.line_total), 0),
+      0)
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -476,9 +656,10 @@ export default function TableBillPage() {
         {!isBilled && (
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setEndConfirmOpen(true)}
-              disabled={endMutation.isPending}
-              className="py-1.5 px-3 text-sm rounded-lg border border-red-200 text-red-500 hover:bg-red-50 font-medium flex items-center gap-1"
+              onClick={() => setBillOpen(true)}
+              disabled={hasPendingPayment || endMutation.isPending}
+              title={hasPendingPayment ? 'Release all pending payment orders first' : ''}
+              className="py-1.5 px-3 text-sm rounded-lg border border-red-200 text-red-500 hover:bg-red-50 font-medium flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               End Session
             </button>
@@ -496,11 +677,14 @@ export default function TableBillPage() {
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-gray-400">Round {idx + 1}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${BATCH_STATUS_STYLE[batch.status]}`}>
-                  {batch.status}
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${BATCH_STATUS_STYLE[batch.status] || 'bg-gray-100 text-gray-600'}`}>
+                  {BATCH_STATUS_LABEL[batch.status] || batch.status}
                 </span>
                 {batch.added_by === 'BILLER' && (
                   <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Biller</span>
+                )}
+                {batch.status === 'PENDING_PAYMENT' && batch.added_by !== 'BILLER' && (
+                  <span className="text-xs text-purple-500 bg-purple-50 px-2 py-0.5 rounded-full">Customer</span>
                 )}
               </div>
               <span className="text-xs text-gray-400">
@@ -509,7 +693,8 @@ export default function TableBillPage() {
             </div>
             <div className="space-y-1.5">
               {batch.items.map(item => {
-                const cancelled = item.cancelled_by_kitchen
+                const cancelled        = item.cancelled_by_kitchen
+                const canBillerModify  = !cancelled && batch.status === 'PENDING_PAYMENT' && !isBilled
                 return (
                   <div key={item.id} className={`flex items-center justify-between text-sm ${cancelled ? 'opacity-50' : ''}`}>
                     <span className={cancelled ? 'line-through text-gray-400' : 'text-gray-700'}>
@@ -521,11 +706,20 @@ export default function TableBillPage() {
                         <span className="text-xs text-red-400 ml-1 no-underline">(Cancelled)</span>
                       )}
                     </span>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <span className="text-gray-400">×{item.quantity}</span>
                       <span className={`font-medium w-20 text-right ${cancelled ? 'line-through text-red-300' : 'text-gray-700'}`}>
                         ₹{parseFloat(item.line_total).toLocaleString()}
                       </span>
+                      {canBillerModify && (
+                        <button
+                          onClick={() => setItemActionItem(item)}
+                          className="w-6 h-6 rounded-full bg-red-50 hover:bg-red-100 text-red-400 hover:text-red-600 flex items-center justify-center transition-colors flex-shrink-0"
+                          title="Modify item"
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 )
@@ -542,10 +736,33 @@ export default function TableBillPage() {
       {/* Bill footer */}
       {!isBilled && (
         <div className="bg-white border-t border-gray-200 p-4 flex-shrink-0 space-y-3">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-500">Subtotal</span>
-            <span className="font-medium">₹{subtotal.toLocaleString()}</span>
-          </div>
+          {/* Per-batch breakdown */}
+          {session.batches.length > 0 && (
+            <div className="space-y-1">
+              {session.batches.map((batch, idx) => {
+                const batchTotal = batch.items
+                  .filter(item => !item.cancelled_by_kitchen)
+                  .reduce((s, item) => s + parseFloat(item.line_total), 0)
+                if (batchTotal === 0) return null
+                return (
+                  <div key={batch.id} className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400">
+                      Round {idx + 1}
+                      <span className={`ml-1.5 px-1.5 py-0.5 rounded-full ${BATCH_STATUS_STYLE[batch.status] || 'bg-gray-100 text-gray-500'}`}>
+                        {BATCH_STATUS_LABEL[batch.status] || batch.status}
+                      </span>
+                    </span>
+                    <span className="text-gray-500">₹{batchTotal.toFixed(2)}</span>
+                  </div>
+                )
+              })}
+              <div className="border-t border-gray-100 pt-2 flex items-center justify-between text-sm font-medium">
+                <span className="text-gray-600">Session Total</span>
+                <span>₹{subtotal.toLocaleString()}</span>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center gap-3">
             <label className="text-sm text-gray-500 shrink-0">Discount ₹</label>
             <input
@@ -559,16 +776,18 @@ export default function TableBillPage() {
               Tax ({gstDisplay}%) ₹{tax.toFixed(2)}
             </div>
           </div>
-          <button
-            onClick={() => setBillOpen(true)}
-            disabled={subtotal === 0 || billMutation.isPending}
-            className="btn-primary w-full justify-center text-base py-3 disabled:opacity-40"
-          >
-            {billMutation.isPending
-              ? <><Loader2 size={16} className="animate-spin" /> Processing…</>
-              : <><CreditCard size={16} /> Collect ₹{total.toFixed(2)}</>
-            }
-          </button>
+          {hasPendingPayment && pendingPaymentTotal > 0 && (
+            <button
+              onClick={() => setReleaseConfirmOpen(true)}
+              disabled={releaseMutation.isPending}
+              className="btn-primary w-full justify-center text-base py-3 disabled:opacity-40"
+            >
+              {releaseMutation.isPending
+                ? <><Loader2 size={16} className="animate-spin" /> Releasing…</>
+                : <><ChefHat size={16} /> Release to Kitchen — ₹{pendingPaymentTotal.toFixed(2)} collected</>
+              }
+            </button>
+          )}
         </div>
       )}
 
@@ -579,57 +798,59 @@ export default function TableBillPage() {
         </div>
       )}
 
+      <BillerItemActionModal
+        open={!!itemActionItem}
+        onClose={() => setItemActionItem(null)}
+        item={itemActionItem}
+        sessionId={sessionId}
+        onDone={() => setItemActionItem(null)}
+      />
       <AddItemsModal
         open={addOpen}
         onClose={() => setAddOpen(false)}
         sessionId={sessionId}
       />
+      <Modal
+        open={releaseConfirmOpen}
+        onClose={() => setReleaseConfirmOpen(false)}
+        title="Release to Kitchen"
+        size="sm"
+        footer={
+          <>
+            <button onClick={() => setReleaseConfirmOpen(false)} className="btn-ghost">Cancel</button>
+            <button
+              onClick={() => { setReleaseConfirmOpen(false); releaseMutation.mutate() }}
+              disabled={releaseMutation.isPending}
+              className="btn-primary disabled:opacity-50"
+            >
+              <ChefHat size={14} /> Yes, Release
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-2 py-1">
+          <p className="text-gray-700 text-sm">
+            Confirm you have collected <span className="font-bold text-gray-900">₹{pendingPaymentTotal.toFixed(2)}</span> from the customer.
+          </p>
+          <p className="text-gray-400 text-xs">
+            The order will be sent to the kitchen immediately and can no longer be modified by the biller.
+          </p>
+        </div>
+      </Modal>
+
       <BillModal
         open={billOpen}
         onClose={() => setBillOpen(false)}
         session={{ ...session, discount }}
         gstRate={gstRate}
-        onBill={(data) => { setBillOpen(false); billMutation.mutate(data) }}
+        title="End Session — Final Bill"
+        onBill={(data) => { setBillOpen(false); endMutation.mutate(data) }}
       />
       <TableBillReceiptModal
         open={!!billedOrder}
         onClose={() => { setBilledOrder(null); navigate('/billing/tables') }}
         order={billedOrder}
       />
-
-      {/* End Session confirmation modal */}
-      <Modal
-        open={endConfirmOpen}
-        onClose={() => setEndConfirmOpen(false)}
-        title="End Session"
-        size="sm"
-        footer={
-          <>
-            <button
-              onClick={() => setEndConfirmOpen(false)}
-              className="btn-ghost"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => { setEndConfirmOpen(false); endMutation.mutate() }}
-              disabled={endMutation.isPending}
-              className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white font-semibold text-sm disabled:opacity-50"
-            >
-              {endMutation.isPending ? 'Ending…' : 'Yes, End Session'}
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-3 py-1">
-          <p className="text-gray-700 text-sm">
-            This will free <span className="font-semibold">Table {session?.table_number}</span> for new customers immediately.
-          </p>
-          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
-            The session and all its orders will be saved. You can still bill it from the <span className="font-semibold">Pending Bills</span> section on the tables page.
-          </div>
-        </div>
-      </Modal>
     </div>
   )
 }
