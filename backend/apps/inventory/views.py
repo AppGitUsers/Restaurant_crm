@@ -1,4 +1,5 @@
 import logging
+import threading
 from decimal import Decimal, InvalidOperation
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -70,11 +71,15 @@ class StockViewSet(viewsets.ModelViewSet):
         )
         logger.info("Stock manually adjusted: admin=%s ingredient=%s old=%.3f new=%.3f note=%s",
                     request.user, stock.ingredient.name, float(old_qty), float(quantity), note)
-        from apps.menu.models import FoodItem
-        for food in FoodItem.objects.filter(is_active=True, is_combo=False):
-            food.update_makeable_count()
-        for food in FoodItem.objects.filter(is_active=True, is_combo=True):
-            food.update_makeable_count()
+
+        def _recalculate():
+            from apps.menu.models import FoodItem
+            for food in FoodItem.objects.filter(is_active=True, is_combo=False):
+                food.update_makeable_count()
+            for food in FoodItem.objects.filter(is_active=True, is_combo=True):
+                food.update_makeable_count()
+
+        threading.Thread(target=_recalculate, daemon=True).start()
         return Response(StockSerializer(stock).data)
 
 
