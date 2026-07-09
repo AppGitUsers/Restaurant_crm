@@ -1,3 +1,4 @@
+import logging
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -5,6 +6,8 @@ from django.db.models import Count
 from apps.accounts.permissions import IsAdmin
 from .models import Notification
 from .serializers import NotificationSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):

@@ -1,3 +1,4 @@
+import logging
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.views import APIView
@@ -11,6 +12,8 @@ from apps.accounts.permissions import IsAdmin
 from .models import Transaction, Expense, DailyReport
 from .serializers import TransactionSerializer, ExpenseSerializer, DailyReportSerializer
 
+logger = logging.getLogger(__name__)
+
 
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset           = Transaction.objects.all()
@@ -20,14 +23,33 @@ class TransactionViewSet(viewsets.ModelViewSet):
     search_fields      = ['description', 'reference']
     ordering_fields    = ['tx_date', 'amount', 'created_at']
 
+    def perform_create(self, serializer):
+        tx = serializer.save()
+        logger.info("Transaction created: admin=%s type=%s amount=%s category=%s desc=%s",
+                    self.request.user, tx.tx_type, tx.amount, tx.category, tx.description)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        logger.info("Transaction updated: admin=%s tx_id=%s fields=%s",
+                    self.request.user, serializer.instance.id, list(self.request.data.keys()))
+
+    def perform_destroy(self, instance):
+        logger.info("Transaction deleted: admin=%s tx_id=%s type=%s amount=%s desc=%s",
+                    self.request.user, instance.id, instance.tx_type, instance.amount, instance.description)
+        instance.delete()
+
     @action(detail=True, methods=['post'], url_path='secure_delete')
     def secure_delete(self, request, pk=None):
         password = request.data.get('password', '')
         if not password:
             return Response({'error': 'Password is required.'}, status=400)
         if not request.user.check_password(password):
+            logger.warning("Secure delete: wrong password by admin=%s for tx_id=%s", request.user, pk)
             return Response({'error': 'Incorrect password.'}, status=400)
-        self.get_object().delete()
+        obj = self.get_object()
+        logger.info("Transaction secure-deleted: admin=%s tx_id=%s type=%s amount=%s desc=%s",
+                    request.user, obj.id, obj.tx_type, obj.amount, obj.description)
+        obj.delete()
         return Response(status=204)
 
 
@@ -49,6 +71,18 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             reference   = f"expense:{expense.id}",
             tx_date     = expense.expense_date,
         )
+        logger.info("Expense created: admin=%s title=%s amount=%s category=%s date=%s",
+                    self.request.user, expense.title, expense.amount, expense.category, expense.expense_date)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        logger.info("Expense updated: admin=%s title=%s fields=%s",
+                    self.request.user, serializer.instance.title, list(self.request.data.keys()))
+
+    def perform_destroy(self, instance):
+        logger.info("Expense deleted: admin=%s title=%s amount=%s date=%s",
+                    self.request.user, instance.title, instance.amount, instance.expense_date)
+        instance.delete()
 
 
 class DailyReportViewSet(viewsets.ReadOnlyModelViewSet):
@@ -156,6 +190,9 @@ class MonthlyReportView(APIView):
             tx_date__year=year,
             tx_date__month=month,
         ).order_by('tx_date')
+
+        logger.info("Monthly report exported: admin=%s year=%d month=%d orders=%d expenses=%d",
+                    request.user, year, month, orders.count(), expense_txns.count())
 
         wb = openpyxl.Workbook()
 

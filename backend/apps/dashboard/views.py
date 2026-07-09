@@ -1,3 +1,4 @@
+import logging
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db.models import Sum, Count, Avg, Case, When, F, Value, CharField, ExpressionWrapper, DecimalField
@@ -5,6 +6,8 @@ from django.utils import timezone
 import datetime
 
 from apps.accounts.permissions import IsAdmin, IsAdminOrBiller
+
+logger = logging.getLogger(__name__)
 
 
 class DashboardSummaryView(APIView):
@@ -43,7 +46,7 @@ class DashboardSummaryView(APIView):
         present_today = Attendance.objects.filter(date=today, status='PRESENT').count()
 
         # ── Customers ───────────────────────────────────────────
-        total_customers  = Customer.objects.count()
+        total_customers    = Customer.objects.count()
         high_val_customers = Customer.objects.filter(frequency_tag='HIGH').count()
 
         # ── Top selling items (all time) ─────────────────────────
@@ -92,6 +95,9 @@ class DashboardSummaryView(APIView):
                           .annotate(days=Count('id'))
                           .order_by('-days')[:5])
 
+        if low_stock_count:
+            logger.warning("Dashboard: %d low-stock ingredients detected", low_stock_count)
+
         return Response({
             'today': {
                 'revenue':     float(today_revenue),
@@ -112,7 +118,7 @@ class DashboardSummaryView(APIView):
                 'present_today': present_today,
             },
             'customers': {
-                'total':     total_customers,
+                'total':      total_customers,
                 'high_value': high_val_customers,
             },
             'top_selling_items':  list(top_items),

@@ -17,6 +17,10 @@ from .serializers import (
     TableAdminSerializer,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 # ── Throttles for public (unauthenticated) endpoints ────────────────────────
 
@@ -414,6 +418,8 @@ class PublicOrderSubmitView(APIView):
                                 )
 
         except _StockError:
+            logger.warning("Order rejected (stock errors): table=%s errors=%s",
+                           table.number, [e['name'] for e in stock_errors])
             return Response({
                 'error':        'Some items are no longer available',
                 'out_of_stock': stock_errors,
@@ -429,12 +435,15 @@ class PublicOrderSubmitView(APIView):
         except Exception:
             pass
 
+        items_count = sum(d['quantity'] for d in items_data)
+        logger.info("Order placed: table=%s session=%d batch=%d items=%d",
+                    table.number, session.id, batch.id, items_count)
         return Response({
             'batch_id':     batch.id,
             'session_id':   session.id,
             'session_key':  session.session_key,
             'table_number': table.number,
-            'items_count':  sum(d['quantity'] for d in items_data),
+            'items_count':  items_count,
             'message':      'Order placed. Kitchen has been notified.',
         }, status=status.HTTP_201_CREATED)
 
@@ -467,6 +476,8 @@ class PublicBatchCancelView(APIView):
                 return Response({'error': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
 
             if batch.status not in (TableOrderBatch.Status.PENDING, TableOrderBatch.Status.PENDING_PAYMENT):
+                logger.warning("Customer cancel blocked: batch=%d already %s table=%s",
+                               batch_id, batch.status, table.number)
                 return Response(
                     {'error': 'This order is already being prepared and cannot be cancelled.'},
                     status=status.HTTP_409_CONFLICT,
@@ -550,6 +561,7 @@ class PublicBatchCancelView(APIView):
         except Exception:
             pass
 
+        logger.info("Order cancelled by customer: table=%s batch=%d", table.number, batch_id)
         return Response({'message': 'Order cancelled.'})
 
 
@@ -631,6 +643,8 @@ class KitchenBatchUpdateView(APIView):
             batch.served_at = timezone.now()
             update_fields.append('served_at')
         batch.save(update_fields=update_fields)
+        logger.info("Kitchen batch status updated: user=%s batch=%d %s → %s",
+                    request.user, batch.id, expected, new_status)
         return Response(TableOrderBatchSerializer(batch).data)
 
 
@@ -717,6 +731,7 @@ def _do_cancel_item(item, restore_stock):
     item.save(update_fields=['cancelled_by_kitchen', 'cancelled_at'])
 
     item_name = item.food_item.name if item.food_item_id else (item.custom_name or 'Custom Item')
+    logger.info("Item cancelled: item=%d name=%s qty=%d batch=%d", item.id, item_name, item.quantity, item.batch_id)
     if item.batch.session_id:
         KitchenNotification.objects.create(
             session=item.batch.session,
@@ -748,6 +763,8 @@ def _do_reduce_item(item, new_quantity, restore_stock):
 
     item.quantity = new_quantity
     item.save(update_fields=['quantity'])
+    logger.info("Item quantity reduced: item=%d name=%s %d → %d batch=%d",
+                item.id, item_name, orig_quantity, new_quantity, item.batch_id)
 
     if item.batch.session_id:
         KitchenNotification.objects.create(
@@ -777,6 +794,7 @@ class KitchenCancelItemView(APIView):
         restore_stock = bool(request.data.get('restore_stock', False))
 
         if not _validate_kitchen_pin(pin, request.user):
+            logger.warning("Kitchen cancel: wrong PIN by user=%s for item=%s", request.user, item_id)
             return Response({'error': 'Incorrect PIN.'}, status=status.HTTP_403_FORBIDDEN)
 
         try:
@@ -792,6 +810,7 @@ class KitchenCancelItemView(APIView):
         if restore_stock:
             _refresh_makeable_counts()
 
+        logger.info("Kitchen cancel done: user=%s item=%d restore_stock=%s", request.user, item_id, restore_stock)
         return Response({'message': 'Item cancelled.', 'item_id': item_id})
 
 
@@ -805,6 +824,7 @@ class KitchenReduceItemView(APIView):
         restore_stock = bool(request.data.get('restore_stock', False))
 
         if not _validate_kitchen_pin(pin, request.user):
+            logger.warning("Kitchen reduce: wrong PIN by user=%s for item=%s", request.user, item_id)
             return Response({'error': 'Incorrect PIN.'}, status=status.HTTP_403_FORBIDDEN)
 
         try:
@@ -827,6 +847,8 @@ class KitchenReduceItemView(APIView):
         if restore_stock:
             _refresh_makeable_counts()
 
+        logger.info("Kitchen reduce done: user=%s item=%d new_qty=%d restore_stock=%s",
+                    request.user, item_id, new_quantity, restore_stock)
         return Response({'message': 'Quantity reduced.', 'item_id': item_id, 'new_quantity': new_quantity})
 
 
@@ -839,6 +861,7 @@ class BillerCancelItemView(APIView):
         restore_stock = bool(request.data.get('restore_stock', True))
 
         if not _validate_kitchen_pin(pin, request.user):
+            logger.warning("Biller cancel: wrong PIN by user=%s for item=%s", request.user, item_id)
             return Response({'error': 'Incorrect PIN.'}, status=status.HTTP_403_FORBIDDEN)
 
         try:
@@ -848,6 +871,8 @@ class BillerCancelItemView(APIView):
                 except TableOrderItem.DoesNotExist:
                     return Response({'error': 'Item not found.'}, status=status.HTTP_404_NOT_FOUND)
                 if item.batch.status != TableOrderBatch.Status.PENDING_PAYMENT:
+                    logger.warning("Biller cancel blocked: item=%d not PENDING_PAYMENT (status=%s)",
+                                   item_id, item.batch.status)
                     raise _CancelError(
                         'Order is no longer awaiting payment. Ask kitchen to cancel if needed.',
                         status.HTTP_409_CONFLICT,
@@ -859,6 +884,7 @@ class BillerCancelItemView(APIView):
         if restore_stock:
             _refresh_makeable_counts()
 
+        logger.info("Biller cancel done: user=%s item=%d restore_stock=%s", request.user, item_id, restore_stock)
         return Response({'message': 'Item cancelled.', 'item_id': item_id})
 
 
@@ -872,6 +898,7 @@ class BillerReduceItemView(APIView):
         restore_stock = bool(request.data.get('restore_stock', True))
 
         if not _validate_kitchen_pin(pin, request.user):
+            logger.warning("Biller reduce: wrong PIN by user=%s for item=%s", request.user, item_id)
             return Response({'error': 'Incorrect PIN.'}, status=status.HTTP_403_FORBIDDEN)
 
         try:
@@ -888,6 +915,8 @@ class BillerReduceItemView(APIView):
                 except TableOrderItem.DoesNotExist:
                     return Response({'error': 'Item not found.'}, status=status.HTTP_404_NOT_FOUND)
                 if item.batch.status != TableOrderBatch.Status.PENDING_PAYMENT:
+                    logger.warning("Biller reduce blocked: item=%d not PENDING_PAYMENT (status=%s)",
+                                   item_id, item.batch.status)
                     raise _CancelError(
                         'Order is no longer awaiting payment. Ask kitchen to reduce if needed.',
                         status.HTTP_409_CONFLICT,
@@ -899,6 +928,8 @@ class BillerReduceItemView(APIView):
         if restore_stock:
             _refresh_makeable_counts()
 
+        logger.info("Biller reduce done: user=%s item=%d new_qty=%d restore_stock=%s",
+                    request.user, item_id, new_quantity, restore_stock)
         return Response({'message': 'Quantity reduced.', 'item_id': item_id, 'new_quantity': new_quantity})
 
 
@@ -1088,6 +1119,9 @@ class TableSessionAddBatchView(APIView):
             pass
 
         from .serializers import TableOrderBatchSerializer
+        items_placed = sum(d['quantity'] for d in items_data)
+        logger.info("Biller batch added: user=%s session=%d batch=%d items=%d table=%s",
+                    request.user, session_id, batch.id, items_placed, table.number)
         return Response(TableOrderBatchSerializer(batch).data, status=status.HTTP_201_CREATED)
 
 
@@ -1106,8 +1140,11 @@ class TableSessionBillView(APIView):
         ).update(status=TableOrderBatch.Status.PENDING)
 
         if released == 0:
+            logger.warning("Release to kitchen: no PENDING_PAYMENT batches in session=%d user=%s",
+                           session_id, request.user)
             return Response({'error': 'No orders awaiting payment.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        logger.info("Released to kitchen: session=%d batches=%d user=%s", session_id, released, request.user)
         return Response({'released': released})
 
 
@@ -1126,6 +1163,8 @@ class TableSessionEndView(APIView):
         session = get_object_or_404(TableSession, pk=session_id, status=TableSession.Status.OPEN)
 
         if session.batches.filter(status=TableOrderBatch.Status.PENDING_PAYMENT).exists():
+            logger.warning("Session end blocked: PENDING_PAYMENT batches exist session=%d user=%s",
+                           session_id, request.user)
             return Response(
                 {'error': 'Some orders are still awaiting payment. Release them to kitchen before ending the session.'},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -1194,6 +1233,9 @@ class TableSessionEndView(APIView):
             session.table.save(update_fields=['is_accepting_orders'])
 
         if order:
+            logger.info("Session billed: user=%s session=%d order=%s total=%s method=%s customer=%s",
+                        request.user, session_id, order.order_number,
+                        order.total_amount, payment_method, customer_name or 'Walk-in')
             try:
                 from apps.notifications.utils import send_bill_notification
                 send_bill_notification(order)
@@ -1203,6 +1245,7 @@ class TableSessionEndView(APIView):
             from apps.billing.serializers import OrderSerializer
             return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
 
+        logger.info("Session closed (no billable items): user=%s session=%d", request.user, session_id)
         return Response({'status': 'closed', 'session_id': session.id})
 
 
@@ -1225,13 +1268,16 @@ class TableOpenView(APIView):
         if table.is_accepting_orders:
             # Toggle off — only if no active session
             if table.get_active_session():
+                logger.warning("Table close blocked (active session): user=%s table=%s", request.user, table.number)
                 return Response(
                     {'error': 'Cannot close a table with an active session. Bill or end the session first.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             table.is_accepting_orders = False
+            logger.info("Table closed: user=%s table=%s", request.user, table.number)
         else:
             table.is_accepting_orders = True
+            logger.info("Table opened: user=%s table=%s", request.user, table.number)
 
         table.save(update_fields=['is_accepting_orders'])
         return Response({'is_accepting_orders': table.is_accepting_orders, 'table_id': table.id})
@@ -1251,6 +1297,7 @@ class TableAdminListCreateView(APIView):
         serializer = TableAdminSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         table = serializer.save()
+        logger.info("Table created: admin=%s number=%s", request.user, table.number)
         return Response(TableAdminSerializer(table).data, status=status.HTTP_201_CREATED)
 
 
@@ -1267,15 +1314,18 @@ class TableAdminDetailView(APIView):
         serializer = TableAdminSerializer(table, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         table = serializer.save()
+        logger.info("Table updated: admin=%s table=%s fields=%s", request.user, table.number, list(request.data.keys()))
         return Response(TableAdminSerializer(table).data)
 
     def delete(self, request, table_id):
         table = get_object_or_404(Table, pk=table_id)
         if table.sessions.filter(status=TableSession.Status.OPEN).exists():
+            logger.warning("Table delete blocked (open session): admin=%s table=%s", request.user, table.number)
             return Response(
                 {'error': 'Cannot delete a table with an open session.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        logger.info("Table deleted: admin=%s table=%s", request.user, table.number)
         table.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

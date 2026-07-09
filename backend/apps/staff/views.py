@@ -1,3 +1,4 @@
+import logging
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -7,11 +8,25 @@ from .models import Department, Shift, Employee, Attendance, StaffPayment
 from .serializers import (DepartmentSerializer, ShiftSerializer, EmployeeSerializer,
                            AttendanceSerializer, StaffPaymentSerializer)
 
+logger = logging.getLogger(__name__)
+
 
 class DepartmentViewSet(viewsets.ModelViewSet):
     queryset           = Department.objects.all()
     serializer_class   = DepartmentSerializer
     permission_classes = [IsAdmin]
+
+    def perform_create(self, serializer):
+        dept = serializer.save()
+        logger.info("Department created: admin=%s name=%s", self.request.user, dept.name)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        logger.info("Department updated: admin=%s name=%s", self.request.user, serializer.instance.name)
+
+    def perform_destroy(self, instance):
+        logger.info("Department deleted: admin=%s name=%s", self.request.user, instance.name)
+        instance.delete()
 
 
 class ShiftViewSet(viewsets.ModelViewSet):
@@ -19,6 +34,19 @@ class ShiftViewSet(viewsets.ModelViewSet):
     serializer_class   = ShiftSerializer
     permission_classes = [IsAdmin]
     filterset_fields   = ['is_active']
+
+    def perform_create(self, serializer):
+        shift = serializer.save()
+        logger.info("Shift created: admin=%s name=%s hours=%s", self.request.user, shift.name, shift.hours)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        logger.info("Shift updated: admin=%s name=%s fields=%s",
+                    self.request.user, serializer.instance.name, list(self.request.data.keys()))
+
+    def perform_destroy(self, instance):
+        logger.info("Shift deleted: admin=%s name=%s", self.request.user, instance.name)
+        instance.delete()
 
 
 class EmployeeViewSet(viewsets.ModelViewSet):
@@ -33,6 +61,22 @@ class EmployeeViewSet(viewsets.ModelViewSet):
             from apps.accounts.permissions import IsAdminOrBiller
             return [IsAdminOrBiller()]
         return [IsAdmin()]
+
+    def perform_create(self, serializer):
+        employee = serializer.save()
+        logger.info("Employee created: admin=%s name=%s dept=%s type=%s",
+                    self.request.user, employee.name,
+                    employee.department.name if employee.department else '—',
+                    employee.employment_type)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        logger.info("Employee updated: admin=%s employee=%s fields=%s",
+                    self.request.user, serializer.instance.name, list(self.request.data.keys()))
+
+    def perform_destroy(self, instance):
+        logger.info("Employee deleted: admin=%s employee=%s", self.request.user, instance.name)
+        instance.delete()
 
     @action(detail=True, methods=['get'])
     def attendance_calendar(self, request, pk=None):
@@ -63,6 +107,22 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         if self.action in ('list', 'retrieve', 'create', 'partial_update', 'update'):
             return [IsAdminOrBiller()]
         return [IsAdmin()]
+
+    def perform_create(self, serializer):
+        att = serializer.save()
+        logger.info("Attendance marked: user=%s employee=%s date=%s status=%s",
+                    self.request.user, att.employee.name, att.date, att.status)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        logger.info("Attendance updated: user=%s employee=%s date=%s status=%s",
+                    self.request.user, serializer.instance.employee.name,
+                    serializer.instance.date, serializer.instance.status)
+
+    def perform_destroy(self, instance):
+        logger.info("Attendance deleted: admin=%s employee=%s date=%s",
+                    self.request.user, instance.employee.name, instance.date)
+        instance.delete()
 
     @action(detail=False, methods=['get'])
     def by_date(self, request):
@@ -168,3 +228,19 @@ class StaffPaymentViewSet(viewsets.ModelViewSet):
     filterset_fields   = ['employee', 'payment_type', 'payment_date']
     search_fields      = ['employee__name']
     ordering_fields    = ['payment_date', 'amount']
+
+    def perform_create(self, serializer):
+        payment = serializer.save()
+        logger.info("StaffPayment created: admin=%s employee=%s amount=%s type=%s date=%s",
+                    self.request.user, payment.employee.name,
+                    payment.amount, payment.payment_type, payment.payment_date)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        logger.info("StaffPayment updated: admin=%s employee=%s fields=%s",
+                    self.request.user, serializer.instance.employee.name, list(self.request.data.keys()))
+
+    def perform_destroy(self, instance):
+        logger.info("StaffPayment deleted: admin=%s employee=%s amount=%s date=%s",
+                    self.request.user, instance.employee.name, instance.amount, instance.payment_date)
+        instance.delete()

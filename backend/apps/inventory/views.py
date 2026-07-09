@@ -1,3 +1,4 @@
+import logging
 from decimal import Decimal, InvalidOperation
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -8,6 +9,8 @@ from .serializers import (VendorSerializer, StockSerializer, VendorInvoiceSerial
                            VendorInvoiceWriteSerializer, InvoicePaymentSerializer,
                            StockTransactionSerializer)
 
+logger = logging.getLogger(__name__)
+
 
 class VendorViewSet(viewsets.ModelViewSet):
     queryset           = Vendor.objects.all()
@@ -16,6 +19,19 @@ class VendorViewSet(viewsets.ModelViewSet):
     filterset_fields   = ['is_active']
     search_fields      = ['name', 'contact_name', 'phone', 'email']
     ordering_fields    = ['name', 'created_at']
+
+    def perform_create(self, serializer):
+        vendor = serializer.save()
+        logger.info("Vendor created: admin=%s name=%s", self.request.user, vendor.name)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        logger.info("Vendor updated: admin=%s name=%s fields=%s",
+                    self.request.user, serializer.instance.name, list(self.request.data.keys()))
+
+    def perform_destroy(self, instance):
+        logger.info("Vendor deleted: admin=%s name=%s", self.request.user, instance.name)
+        instance.delete()
 
 
 class StockViewSet(viewsets.ModelViewSet):
@@ -28,6 +44,8 @@ class StockViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def low_stock_alert(self, request):
         low = [s for s in self.get_queryset() if s.is_low]
+        if low:
+            logger.warning("Low stock alert fetched: user=%s items=%d", request.user, len(low))
         return Response(StockSerializer(low, many=True).data)
 
     @action(detail=True, methods=['post'])
@@ -50,6 +68,8 @@ class StockViewSet(viewsets.ModelViewSet):
             quantity   = abs(float(quantity) - float(old_qty)),
             note       = note,
         )
+        logger.info("Stock manually adjusted: admin=%s ingredient=%s old=%.3f new=%.3f note=%s",
+                    request.user, stock.ingredient.name, float(old_qty), float(quantity), note)
         from apps.menu.models import FoodItem
         for food in FoodItem.objects.filter(is_active=True, is_combo=False):
             food.update_makeable_count()
@@ -73,13 +93,32 @@ class VendorInvoiceViewSet(viewsets.ModelViewSet):
             return VendorInvoiceWriteSerializer
         return VendorInvoiceSerializer
 
+    def perform_create(self, serializer):
+        invoice = serializer.save()
+        logger.info("VendorInvoice created: admin=%s vendor=%s invoice=%s total=%s",
+                    self.request.user, invoice.vendor.name, invoice.invoice_number, invoice.total_amount)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        logger.info("VendorInvoice updated: admin=%s invoice=%s fields=%s",
+                    self.request.user, serializer.instance.invoice_number, list(self.request.data.keys()))
+
+    def perform_destroy(self, instance):
+        logger.info("VendorInvoice deleted: admin=%s invoice=%s vendor=%s",
+                    self.request.user, instance.invoice_number, instance.vendor.name)
+        instance.delete()
+
     @action(detail=True, methods=['post'])
     def mark_received(self, request, pk=None):
         invoice = self.get_object()
         if invoice.stock_updated:
+            logger.warning("mark_received blocked (already done): admin=%s invoice=%s",
+                           request.user, invoice.invoice_number)
             return Response({'detail': 'Stock already updated for this invoice.'}, status=400)
         invoice.stock_updated = True
         invoice.save()
+        logger.info("Invoice marked received (stock updated): admin=%s invoice=%s vendor=%s",
+                    request.user, invoice.invoice_number, invoice.vendor.name)
         return Response({'detail': 'Stock updated from invoice.'})
 
     @action(detail=True, methods=['post'])
@@ -88,7 +127,10 @@ class VendorInvoiceViewSet(viewsets.ModelViewSet):
         data    = {**request.data, 'invoice': invoice.id}
         serializer = InvoicePaymentSerializer(data=data)
         serializer.is_valid(raise_exception=True)
-        serializer.save(invoice=invoice)
+        payment = serializer.save(invoice=invoice)
+        logger.info("Invoice payment added: admin=%s invoice=%s amount=%s method=%s",
+                    request.user, invoice.invoice_number,
+                    request.data.get('amount', '?'), request.data.get('payment_method', '?'))
         # Re-fetch invoice fresh to pick up signal-updated paid_amount/status and new payment row
         invoice = (VendorInvoice.objects
                    .select_related('vendor')

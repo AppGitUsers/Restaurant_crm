@@ -1,3 +1,4 @@
+import logging
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -7,6 +8,8 @@ from .models import FoodType, FoodItem, Ingredient, RecipeIngredient, Addon, Com
 from .serializers import (FoodTypeSerializer, FoodItemSerializer,
                            FoodItemWriteSerializer, IngredientSerializer,
                            RecipeIngredientSerializer, AddonSerializer)
+
+logger = logging.getLogger(__name__)
 
 
 class AddonViewSet(viewsets.ModelViewSet):
@@ -20,6 +23,19 @@ class AddonViewSet(viewsets.ModelViewSet):
             return [IsAdminOrBiller()]
         return [IsAdmin()]
 
+    def perform_create(self, serializer):
+        addon = serializer.save()
+        logger.info("Addon created: admin=%s name=%s price=%s", self.request.user, addon.name, addon.price)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        logger.info("Addon updated: admin=%s name=%s fields=%s",
+                    self.request.user, serializer.instance.name, list(self.request.data.keys()))
+
+    def perform_destroy(self, instance):
+        logger.info("Addon deleted: admin=%s name=%s", self.request.user, instance.name)
+        instance.delete()
+
 
 class FoodTypeViewSet(viewsets.ModelViewSet):
     queryset           = FoodType.objects.prefetch_related('addons').all()
@@ -32,6 +48,19 @@ class FoodTypeViewSet(viewsets.ModelViewSet):
             return [IsAdminOrBiller()]
         return [IsAdmin()]
 
+    def perform_create(self, serializer):
+        ft = serializer.save()
+        logger.info("FoodType created: admin=%s name=%s", self.request.user, ft.name)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        logger.info("FoodType updated: admin=%s name=%s fields=%s",
+                    self.request.user, serializer.instance.name, list(self.request.data.keys()))
+
+    def perform_destroy(self, instance):
+        logger.info("FoodType deleted: admin=%s name=%s", self.request.user, instance.name)
+        instance.delete()
+
 
 class IngredientViewSet(viewsets.ModelViewSet):
     queryset           = Ingredient.objects.select_related('stock').all()
@@ -39,6 +68,20 @@ class IngredientViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdmin]
     filterset_fields   = ['is_active', 'unit']
     search_fields      = ['name']
+
+    def perform_create(self, serializer):
+        ingredient = serializer.save()
+        logger.info("Ingredient created: admin=%s name=%s unit=%s",
+                    self.request.user, ingredient.name, ingredient.unit)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        logger.info("Ingredient updated: admin=%s name=%s fields=%s",
+                    self.request.user, serializer.instance.name, list(self.request.data.keys()))
+
+    def perform_destroy(self, instance):
+        logger.info("Ingredient deleted: admin=%s name=%s", self.request.user, instance.name)
+        instance.delete()
 
 
 class FoodItemViewSet(viewsets.ModelViewSet):
@@ -66,6 +109,11 @@ class FoodItemViewSet(viewsets.ModelViewSet):
             return FoodItemWriteSerializer
         return FoodItemSerializer
 
+    def perform_create(self, serializer):
+        item = serializer.save()
+        logger.info("FoodItem created: admin=%s name=%s price=%s type=%s",
+                    self.request.user, item.name, item.price, item.food_type.name)
+
     def perform_update(self, serializer):
         was_tracking = serializer.instance.tracks_stock
         instance = serializer.save()
@@ -73,6 +121,15 @@ class FoodItemViewSet(viewsets.ModelViewSet):
         # 999 (the unlimited sentinel). Recalculate immediately from real stock.
         if not was_tracking and instance.tracks_stock:
             instance.update_makeable_count()
+            logger.info("FoodItem stock tracking enabled: admin=%s item=%s — recalculating makeable count",
+                        self.request.user, instance.name)
+        else:
+            logger.info("FoodItem updated: admin=%s item=%s fields=%s",
+                        self.request.user, instance.name, list(self.request.data.keys()))
+
+    def perform_destroy(self, instance):
+        logger.info("FoodItem deleted: admin=%s item=%s", self.request.user, instance.name)
+        instance.delete()
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def set_recipe(self, request, pk=None):
@@ -93,6 +150,8 @@ class FoodItemViewSet(viewsets.ModelViewSet):
                 errors.append(str(e))
 
         food_item.update_makeable_count()
+        logger.info("Recipe set: admin=%s item=%s ingredients=%d errors=%d",
+                    request.user, food_item.name, len(ingredients), len(errors))
         serializer = FoodItemSerializer(food_item, context={'request': request})
         resp = serializer.data
         if errors:
@@ -107,10 +166,14 @@ class FoodItemViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], permission_classes=[IsAdmin])
     def recalculate_all(self, request):
+        count = 0
         for item in FoodItem.objects.filter(is_active=True, is_combo=False):
             item.update_makeable_count()
+            count += 1
         for item in FoodItem.objects.filter(is_active=True, is_combo=True):
             item.update_makeable_count()
+            count += 1
+        logger.info("Makeable counts recalculated: admin=%s items=%d", request.user, count)
         return Response({'detail': 'All makeable counts recalculated.'})
 
     @action(detail=False, methods=['post'], permission_classes=[IsAdmin])
@@ -151,6 +214,8 @@ class FoodItemViewSet(viewsets.ModelViewSet):
                      .select_related('food_type')
                      .prefetch_related('combo_components__component', 'food_type__addons')
                      .get(pk=food_item.pk))
+        logger.info("Combo created: admin=%s name=%s components=%d price=%s",
+                    request.user, name, len(component_ids), price)
         return Response(FoodItemSerializer(food_item, context={'request': request}).data, status=201)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
@@ -180,4 +245,6 @@ class FoodItemViewSet(viewsets.ModelViewSet):
                      .select_related('food_type')
                      .prefetch_related('combo_components__component', 'food_type__addons')
                      .get(pk=food_item.pk))
+        logger.info("Combo components updated: admin=%s item=%s components=%d",
+                    request.user, food_item.name, len(component_ids))
         return Response(FoodItemSerializer(food_item, context={'request': request}).data)

@@ -1,6 +1,9 @@
+import logging
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from .models import Order
+
+logger = logging.getLogger(__name__)
 
 
 @receiver(post_save, sender=Order)
@@ -8,6 +11,10 @@ def handle_order_paid(sender, instance, **kwargs):
     """When an order is marked PAID: deduct inventory + record income + update customers."""
     if instance.status != 'PAID':
         return
+
+    logger.info("Order paid signal: order=%s customer=%s total=%s method=%s is_table=%s",
+                instance.order_number, instance.customer_name or 'Walk-in',
+                instance.total_amount, instance.payment_method, bool(instance.table_session_id))
 
     from apps.inventory.models import Stock, StockTransaction
 
@@ -20,6 +27,7 @@ def handle_order_paid(sender, instance, **kwargs):
     ).exists()
 
     if not is_table_order and not already_deducted:
+        deducted_count = 0
         for order_item in instance.items.select_related('food_item').prefetch_related(
             'food_item__combo_components__component__recipe_ingredients__ingredient',
             'food_item__recipe_ingredients__ingredient',
@@ -46,6 +54,7 @@ def handle_order_paid(sender, instance, **kwargs):
                             reference=f"order:{instance.order_number}",
                             note=f"Sold: {food_item.name} × {order_item.quantity} (via {component.name})",
                         )
+                        deducted_count += 1
                 continue
 
             if not food_item.tracks_stock:
@@ -63,6 +72,11 @@ def handle_order_paid(sender, instance, **kwargs):
                     reference=f"order:{instance.order_number}",
                     note=f"Sold: {food_item.name} × {order_item.quantity}",
                 )
+                deducted_count += 1
+
+        if deducted_count:
+            logger.info("Stock deducted for counter order=%s: %d ingredient transactions created",
+                        instance.order_number, deducted_count)
 
         try:
             from apps.menu.models import FoodItem
@@ -71,12 +85,12 @@ def handle_order_paid(sender, instance, **kwargs):
             for food in FoodItem.objects.filter(is_active=True, is_combo=True):
                 food.update_makeable_count()
         except Exception:
-            pass
+            logger.exception("Failed to recalculate makeable counts after order=%s", instance.order_number)
 
     # Finance income — always runs, idempotent via get_or_create
     try:
         from apps.finance.models import Transaction
-        Transaction.objects.get_or_create(
+        _, created = Transaction.objects.get_or_create(
             reference=f"order:{instance.order_number}",
             defaults=dict(
                 tx_type     = 'INCOME',
@@ -86,8 +100,11 @@ def handle_order_paid(sender, instance, **kwargs):
                 description = f"Order {instance.order_number} — {instance.customer_name or 'Walk-in'}",
             )
         )
+        if created:
+            logger.info("Income transaction created: order=%s amount=%s",
+                        instance.order_number, instance.total_amount)
     except Exception:
-        pass
+        logger.exception("Failed to create income transaction for order=%s", instance.order_number)
 
     # Customer visit — always runs, idempotent via get_or_create
     try:
@@ -97,10 +114,13 @@ def handle_order_paid(sender, instance, **kwargs):
                 phone=instance.customer_phone,
                 defaults={'name': instance.customer_name or 'Unknown'}
             )
-            Visit.objects.get_or_create(
+            _, visit_created = Visit.objects.get_or_create(
                 customer=customer,
                 order_number=instance.order_number,
                 defaults={'amount_spent': instance.total_amount}
             )
+            if visit_created:
+                logger.info("Customer visit recorded: customer=%s order=%s amount=%s",
+                            instance.customer_phone, instance.order_number, instance.total_amount)
     except Exception:
-        pass
+        logger.exception("Failed to record customer visit for order=%s", instance.order_number)

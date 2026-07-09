@@ -1,3 +1,4 @@
+import logging
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -8,6 +9,8 @@ from apps.accounts.permissions import IsAdmin, IsAdminOrBiller
 from .models import Order, OrderItem
 from .serializers import OrderSerializer, OrderCreateSerializer
 from utils.pdf_generator import generate_bill_pdf
+
+logger = logging.getLogger(__name__)
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -30,15 +33,21 @@ class OrderViewSet(viewsets.ModelViewSet):
         return OrderSerializer
 
     def perform_create(self, serializer):
-        serializer.save(biller=self.request.user)
+        order = serializer.save(biller=self.request.user)
+        logger.info("Order created: biller=%s order=%s customer=%s total=%.2f method=%s",
+                    self.request.user, order.order_number,
+                    order.customer_name or 'Walk-in', float(order.total_amount), order.payment_method)
 
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):
         order = self.get_object()
         if order.status != 'PENDING':
+            logger.warning("Order confirm blocked: biller=%s order=%s current_status=%s",
+                           request.user, order.order_number, order.status)
             return Response({'error': 'Only pending orders can be confirmed.'}, status=400)
         order.status = 'CONFIRMED'
         order.save()
+        logger.info("Order confirmed: biller=%s order=%s", request.user, order.order_number)
         return Response(OrderSerializer(order).data)
 
     @action(detail=True, methods=['post'])
@@ -46,12 +55,16 @@ class OrderViewSet(viewsets.ModelViewSet):
         order          = self.get_object()
         payment_method = request.data.get('payment_method', order.payment_method)
         if order.status == 'PAID':
+            logger.warning("Pay blocked (already paid): biller=%s order=%s", request.user, order.order_number)
             return Response({'error': 'Order is already paid.'}, status=400)
         if order.status == 'CANCELLED':
+            logger.warning("Pay blocked (cancelled): biller=%s order=%s", request.user, order.order_number)
             return Response({'error': 'Cannot pay a cancelled order.'}, status=400)
         order.payment_method = payment_method
         order.status         = 'PAID'
         order.save()  # triggers billing/signals.py → handle_order_paid → creates income Transaction
+        logger.info("Order paid: biller=%s order=%s method=%s total=%.2f",
+                    request.user, order.order_number, payment_method, float(order.total_amount))
 
         # Counter order → create kitchen batch so kitchen sees it
         if not order.table_session_id:
@@ -72,11 +85,10 @@ class OrderViewSet(viewsets.ModelViewSet):
                         addon_unit_price = bi.addon_unit_price,
                         notes            = bi.notes or '',
                     )
+                logger.info("Kitchen batch created for counter order: order=%s batch=%d",
+                            order.order_number, batch.id)
             except Exception:
-                import logging
-                logging.getLogger(__name__).exception(
-                    "Failed to create kitchen batch for order %s", order.order_number
-                )
+                logger.exception("Failed to create kitchen batch for counter order=%s", order.order_number)
 
         # WhatsApp bill notification (non-blocking — never breaks the payment flow)
         try:
@@ -91,9 +103,13 @@ class OrderViewSet(viewsets.ModelViewSet):
     def cancel(self, request, pk=None):
         order = self.get_object()
         if order.status == 'PAID':
+            logger.warning("Cancel blocked (paid): biller=%s order=%s", request.user, order.order_number)
             return Response({'error': 'Cannot cancel a paid order.'}, status=400)
+        prev_status  = order.status
         order.status = 'CANCELLED'
         order.save()
+        logger.info("Order cancelled: biller=%s order=%s prev_status=%s",
+                    request.user, order.order_number, prev_status)
         return Response(OrderSerializer(order).data)
 
     @action(detail=True, methods=['get'])
@@ -103,6 +119,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         pdf_data = generate_bill_pdf(order)
         response = HttpResponse(pdf_data, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="bill_{order.order_number}.pdf"'
+        logger.info("Bill PDF downloaded: user=%s order=%s", request.user, order.order_number)
         return response
 
 

@@ -1,9 +1,12 @@
+import logging
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from apps.accounts.permissions import IsAdmin
 from .models import RestaurantSettings
 from .serializers import RestaurantSettingsSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class SettingsView(APIView):
@@ -23,4 +26,5 @@ class SettingsView(APIView):
         serializer = RestaurantSettingsSerializer(obj, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        logger.info("Settings updated: admin=%s fields=%s", request.user, list(request.data.keys()))
         return Response(serializer.data)
