@@ -3,8 +3,11 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+from apps.staff.essl_views import EsslPushView
+
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('iclock/cdata', EsslPushView.as_view(), name='essl_push'),
     path('api/auth/',      include('apps.accounts.urls')),
     path('api/menu/',      include('apps.menu.urls')),
     path('api/inventory/', include('apps.inventory.urls')),
