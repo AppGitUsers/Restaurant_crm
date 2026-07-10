@@ -120,22 +120,6 @@ export default function FinancePage() {
   const incGst    = incomeRows.reduce((s, r) => s + r.gst_amount,  0)
   const expTotal  = expenseRows.reduce((s, r) => s + r.amount, 0)
 
-  const MonthPicker = () => (
-    <div className="flex flex-wrap items-end gap-3 mb-4">
-      <div>
-        <label className="text-xs text-gray-500 mb-1 block">Month</label>
-        <select className="select" value={rptMonth} onChange={e => setRptMonth(Number(e.target.value))}>
-          {MONTHS.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-        </select>
-      </div>
-      <div className="w-28">
-        <label className="text-xs text-gray-500 mb-1 block">Year</label>
-        <input type="number" className="input" value={rptYear} min={2020} max={2099}
-          onChange={e => setRptYear(Number(e.target.value))} />
-      </div>
-    </div>
-  )
-
   const noRecordsMsg = `No records for ${MONTHS[rptMonth - 1]} ${rptYear}`
 
   return (
@@ -228,7 +212,19 @@ export default function FinancePage() {
       {/* ── Expenses ── */}
       {tab === 'expenses' && (
         <div>
-          <MonthPicker />
+          <div className="flex flex-wrap items-end gap-3 mb-4">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Month</label>
+              <select className="select" value={rptMonth} onChange={e => setRptMonth(Number(e.target.value))}>
+                {MONTHS.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+              </select>
+            </div>
+            <div className="w-28">
+              <label className="text-xs text-gray-500 mb-1 block">Year</label>
+              <input type="number" className="input" value={rptYear} min={2020} max={2099}
+                onChange={e => setRptYear(Number(e.target.value))} />
+            </div>
+          </div>
           {/* Desktop table */}
           <div className="hidden sm:block table-container">
             <table className="table">
@@ -272,7 +268,19 @@ export default function FinancePage() {
       {/* ── All Transactions ── */}
       {tab === 'transactions' && (
         <div>
-          <MonthPicker />
+          <div className="flex flex-wrap items-end gap-3 mb-4">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Month</label>
+              <select className="select" value={rptMonth} onChange={e => setRptMonth(Number(e.target.value))}>
+                {MONTHS.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+              </select>
+            </div>
+            <div className="w-28">
+              <label className="text-xs text-gray-500 mb-1 block">Year</label>
+              <input type="number" className="input" value={rptYear} min={2020} max={2099}
+                onChange={e => setRptYear(Number(e.target.value))} />
+            </div>
+          </div>
           {/* Desktop table */}
           <div className="hidden sm:block table-container">
             <table className="table">
