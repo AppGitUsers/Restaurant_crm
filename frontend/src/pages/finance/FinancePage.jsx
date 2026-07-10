@@ -231,7 +231,7 @@ export default function FinancePage() {
               <thead><tr><th>Title</th><th>Category</th><th>Amount</th><th>Date</th><th>Actions</th></tr></thead>
               <tbody>
                 {expLoading && <tr><td colSpan={5} className="text-center py-8 text-gray-400">Loading…</td></tr>}
-                {expenses.map(e => (
+                {(expenses || []).map(e => (
                   <tr key={e.id}>
                     <td className="font-medium">{e.title}</td>
                     <td><span className="badge-gold text-xs">{e.category}</span></td>
@@ -240,14 +240,14 @@ export default function FinancePage() {
                     <td><button onClick={() => delExp.mutate(e.id)} className="btn-ghost py-1 text-red-400"><Trash2 size={13} /></button></td>
                   </tr>
                 ))}
-                {!expLoading && expenses.length === 0 && <tr><td colSpan={5}><Empty message={noRecordsMsg} /></td></tr>}
+                {!expLoading && (expenses || []).length === 0 && <tr><td colSpan={5}><Empty message={noRecordsMsg} /></td></tr>}
               </tbody>
             </table>
           </div>
           {/* Mobile cards */}
           <div className="sm:hidden space-y-3">
             {expLoading && <p className="text-center py-8 text-gray-400">Loading…</p>}
-            {expenses.map(e => (
+            {(expenses || []).map(e => (
               <div key={e.id} className="card flex flex-col gap-2">
                 <div className="flex items-start justify-between gap-2">
                   <p className="font-semibold text-gray-800">{e.title}</p>
@@ -260,7 +260,7 @@ export default function FinancePage() {
                 </div>
               </div>
             ))}
-            {!expLoading && expenses.length === 0 && <Empty message={noRecordsMsg} />}
+            {!expLoading && (expenses || []).length === 0 && <Empty message={noRecordsMsg} />}
           </div>
         </div>
       )}
