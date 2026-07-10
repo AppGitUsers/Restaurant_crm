@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { financeAPI } from '@/api'
-import { PageLoader, Modal, SearchBar, StatusBadge, Field, Empty, KpiCard } from '@/components/ui'
+import { Modal, StatusBadge, Field, Empty, KpiCard } from '@/components/ui'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { TrendingUp, TrendingDown, DollarSign, Plus, Trash2, Download, FileSpreadsheet, Lock } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, Plus, Trash2, Download, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
 
@@ -13,23 +13,28 @@ export default function FinancePage() {
   const [expModal, setExpModal] = useState(false)
   const [expForm, setExpForm]   = useState({ category: 'MISC', title: '', amount: '', expense_date: new Date().toISOString().split('T')[0], notes: '' })
 
-  // Report download state
   const now = new Date()
   const [rptYear,  setRptYear]  = useState(now.getFullYear())
   const [rptMonth, setRptMonth] = useState(now.getMonth() + 1)
   const [downloading, setDownloading] = useState(false)
 
-  // Report sub-section
   const [reportSection, setReportSection] = useState('income')
 
-  // Delete with password confirmation
   const [deleteModal,    setDeleteModal]    = useState(false)
-  const [deleteTarget,   setDeleteTarget]   = useState(null)   // { txId, label }
+  const [deleteTarget,   setDeleteTarget]   = useState(null)
   const [deletePassword, setDeletePassword] = useState('')
 
   const { data: summary } = useQuery({ queryKey: ['finance-summary'], queryFn: () => financeAPI.summary().then(r => r.data) })
-  const { data: expenses, isLoading: expLoading } = useQuery({ queryKey: ['expenses'], queryFn: () => financeAPI.expenses.list().then(r => r.data.results || r.data) })
-  const { data: txns, isLoading: txLoading } = useQuery({ queryKey: ['transactions'], queryFn: () => financeAPI.transactions.list().then(r => r.data.results || r.data) })
+  const { data: expenses, isLoading: expLoading } = useQuery({
+    queryKey: ['expenses', rptYear, rptMonth],
+    queryFn:  () => financeAPI.expenses.list({ year: rptYear, month: rptMonth }).then(r => r.data.results || r.data),
+    enabled:  tab === 'expenses',
+  })
+  const { data: txns, isLoading: txLoading } = useQuery({
+    queryKey: ['transactions', rptYear, rptMonth],
+    queryFn:  () => financeAPI.transactions.list({ year: rptYear, month: rptMonth }).then(r => r.data.results || r.data),
+    enabled:  tab === 'transactions',
+  })
 
   const { data: monthlyData, isLoading: mdLoading } = useQuery({
     queryKey: ['monthly-data', rptYear, rptMonth],
@@ -39,7 +44,7 @@ export default function FinancePage() {
 
   const saveExp = useMutation({
     mutationFn: d => financeAPI.expenses.create(d),
-    onSuccess: () => { qc.invalidateQueries(['expenses']); qc.invalidateQueries(['finance-summary']); setExpModal(false); toast.success('Expense recorded') },
+    onSuccess: () => { qc.invalidateQueries(['expenses']); qc.invalidateQueries(['finance-summary']); qc.invalidateQueries(['transactions']); setExpModal(false); toast.success('Expense recorded') },
   })
   const delExp = useMutation({
     mutationFn: id => financeAPI.expenses.delete(id),
@@ -107,15 +112,31 @@ export default function FinancePage() {
     { id: 'reports',       label: 'Reports' },
   ]
 
-  // Monthly data totals — deduplicate by tx_id to avoid React key warnings if backend returns duplicates
   const incomeRows  = [...new Map((monthlyData?.income   || []).map((r, i) => [r.tx_id ?? i, r])).values()]
   const expenseRows = [...new Map((monthlyData?.expenses || []).map((r, i) => [r.tx_id ?? i, r])).values()]
-  // Deduplicate transactions by id for the same reason
   const txnsUniq    = [...new Map((txns || []).map(t => [t.id, t])).values()]
   const incTotal  = incomeRows.reduce((s, r) => s + r.bill_amount, 0)
   const incBase   = incomeRows.reduce((s, r) => s + r.base_amount, 0)
   const incGst    = incomeRows.reduce((s, r) => s + r.gst_amount,  0)
   const expTotal  = expenseRows.reduce((s, r) => s + r.amount, 0)
+
+  const MonthPicker = () => (
+    <div className="flex flex-wrap items-end gap-3 mb-4">
+      <div>
+        <label className="text-xs text-gray-500 mb-1 block">Month</label>
+        <select className="select" value={rptMonth} onChange={e => setRptMonth(Number(e.target.value))}>
+          {MONTHS.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+        </select>
+      </div>
+      <div className="w-28">
+        <label className="text-xs text-gray-500 mb-1 block">Year</label>
+        <input type="number" className="input" value={rptYear} min={2020} max={2099}
+          onChange={e => setRptYear(Number(e.target.value))} />
+      </div>
+    </div>
+  )
+
+  const noRecordsMsg = `No records for ${MONTHS[rptMonth - 1]} ${rptYear}`
 
   return (
     <div>
@@ -207,13 +228,14 @@ export default function FinancePage() {
       {/* ── Expenses ── */}
       {tab === 'expenses' && (
         <div>
+          <MonthPicker />
           {/* Desktop table */}
           <div className="hidden sm:block table-container">
             <table className="table">
               <thead><tr><th>Title</th><th>Category</th><th>Amount</th><th>Date</th><th>Actions</th></tr></thead>
               <tbody>
                 {expLoading && <tr><td colSpan={5} className="text-center py-8 text-gray-400">Loading…</td></tr>}
-                {(expenses || []).map(e => (
+                {expenses.map(e => (
                   <tr key={e.id}>
                     <td className="font-medium">{e.title}</td>
                     <td><span className="badge-gold text-xs">{e.category}</span></td>
@@ -222,14 +244,14 @@ export default function FinancePage() {
                     <td><button onClick={() => delExp.mutate(e.id)} className="btn-ghost py-1 text-red-400"><Trash2 size={13} /></button></td>
                   </tr>
                 ))}
-                {!expLoading && (expenses || []).length === 0 && <tr><td colSpan={5}><Empty message="No expenses recorded" /></td></tr>}
+                {!expLoading && expenses.length === 0 && <tr><td colSpan={5}><Empty message={noRecordsMsg} /></td></tr>}
               </tbody>
             </table>
           </div>
           {/* Mobile cards */}
           <div className="sm:hidden space-y-3">
             {expLoading && <p className="text-center py-8 text-gray-400">Loading…</p>}
-            {(expenses || []).map(e => (
+            {expenses.map(e => (
               <div key={e.id} className="card flex flex-col gap-2">
                 <div className="flex items-start justify-between gap-2">
                   <p className="font-semibold text-gray-800">{e.title}</p>
@@ -242,7 +264,7 @@ export default function FinancePage() {
                 </div>
               </div>
             ))}
-            {!expLoading && (expenses || []).length === 0 && <Empty message="No expenses recorded" />}
+            {!expLoading && expenses.length === 0 && <Empty message={noRecordsMsg} />}
           </div>
         </div>
       )}
@@ -250,6 +272,7 @@ export default function FinancePage() {
       {/* ── All Transactions ── */}
       {tab === 'transactions' && (
         <div>
+          <MonthPicker />
           {/* Desktop table */}
           <div className="hidden sm:block table-container">
             <table className="table">
@@ -274,7 +297,7 @@ export default function FinancePage() {
                     <td className="text-gray-400">{t.tx_date}</td>
                   </tr>
                 ))}
-                {!txLoading && txnsUniq.length === 0 && <tr><td colSpan={6}><Empty message="No transactions" /></td></tr>}
+                {!txLoading && txnsUniq.length === 0 && <tr><td colSpan={6}><Empty message={noRecordsMsg} /></td></tr>}
               </tbody>
             </table>
           </div>
@@ -299,7 +322,7 @@ export default function FinancePage() {
                 {t.description && <p className="text-xs text-gray-500">{t.description}</p>}
               </div>
             ))}
-            {!txLoading && txnsUniq.length === 0 && <Empty message="No transactions" />}
+            {!txLoading && txnsUniq.length === 0 && <Empty message={noRecordsMsg} />}
           </div>
         </div>
       )}

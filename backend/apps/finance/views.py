@@ -16,12 +16,21 @@ logger = logging.getLogger(__name__)
 
 
 class TransactionViewSet(viewsets.ModelViewSet):
-    queryset           = Transaction.objects.all()
     serializer_class   = TransactionSerializer
     permission_classes = [IsAdmin]
     filterset_fields   = ['tx_type', 'category', 'tx_date']
     search_fields      = ['description', 'reference']
     ordering_fields    = ['tx_date', 'amount', 'created_at']
+
+    def get_queryset(self):
+        qs = Transaction.objects.all()
+        try:
+            year  = int(self.request.query_params['year'])
+            month = int(self.request.query_params['month'])
+            qs = qs.filter(tx_date__year=year, tx_date__month=month)
+        except (KeyError, ValueError):
+            pass
+        return qs
 
     def perform_create(self, serializer):
         tx = serializer.save()
@@ -54,12 +63,21 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
 
 class ExpenseViewSet(viewsets.ModelViewSet):
-    queryset           = Expense.objects.all()
     serializer_class   = ExpenseSerializer
     permission_classes = [IsAdmin]
     filterset_fields   = ['category', 'expense_date']
     search_fields      = ['title', 'notes']
     ordering_fields    = ['expense_date', 'amount']
+
+    def get_queryset(self):
+        qs = Expense.objects.all()
+        try:
+            year  = int(self.request.query_params['year'])
+            month = int(self.request.query_params['month'])
+            qs = qs.filter(expense_date__year=year, expense_date__month=month)
+        except (KeyError, ValueError):
+            pass
+        return qs
 
     def perform_create(self, serializer):
         expense = serializer.save()
