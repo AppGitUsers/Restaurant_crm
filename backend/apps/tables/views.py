@@ -1235,6 +1235,19 @@ class TableSessionBillView(APIView):
     def post(self, request, session_id):
         session = get_object_or_404(TableSession, pk=session_id, status=TableSession.Status.OPEN)
 
+        # Save customer info if biller filled it in during this release
+        customer_name  = request.data.get('customer_name', '').strip()
+        customer_phone = request.data.get('customer_phone', '').strip()
+        update_fields  = []
+        if customer_name:
+            session.customer_name = customer_name
+            update_fields.append('customer_name')
+        if customer_phone:
+            session.customer_phone = customer_phone
+            update_fields.append('customer_phone')
+        if update_fields:
+            session.save(update_fields=update_fields)
+
         released = session.batches.filter(
             status=TableOrderBatch.Status.PENDING_PAYMENT
         ).update(status=TableOrderBatch.Status.PENDING)
@@ -1272,9 +1285,10 @@ class TableSessionEndView(APIView):
 
         payment_method = request.data.get('payment_method', 'CASH')
         discount       = request.data.get('discount', 0)
-        # Prefer session-stored values (set by QR customer); fall back to request data from biller
-        customer_name  = session.customer_name or request.data.get('customer_name', '')
-        customer_phone = session.customer_phone or request.data.get('customer_phone', '')
+        # BillModal submits whatever the biller confirmed (pre-filled from session or edited);
+        # fall back to session if the biller left the field blank.
+        customer_name  = request.data.get('customer_name', '') or session.customer_name
+        customer_phone = request.data.get('customer_phone', '') or session.customer_phone
         order_type     = session.order_type or request.data.get('order_type', 'DINE_IN')
 
         all_batch_items = []

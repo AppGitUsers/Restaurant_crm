@@ -159,18 +159,19 @@ function AddItemsModal({ open, onClose, sessionId }) {
 }
 
 // ── Bill Confirm Modal ───────────────────────────────────────────────────────
-function BillModal({ open, onClose, session, gstRate, onBill, title = 'Collect Payment' }) {
+function BillModal({ open, onClose, session, gstRate, onBill, title = 'Collect Payment', initialName = '', initialPhone = '' }) {
   const [method,    setMethod]    = useState('CASH')
   const [phone,     setPhone]     = useState('')
   const [name,      setName]      = useState('')
   const [orderType, setOrderType] = useState('DINE_IN')
 
-  // Pre-fill from session when modal opens
+  // Pre-fill: prefer what the biller typed in the footer (initialName/initialPhone),
+  // fall back to session if those are empty.
   useEffect(() => {
-    if (open && session) {
-      setPhone(session.customer_phone || '')
-      setName(session.customer_name || '')
-      setOrderType(session.order_type || 'DINE_IN')
+    if (open) {
+      setPhone(initialPhone || session?.customer_phone || '')
+      setName(initialName  || session?.customer_name  || '')
+      setOrderType(session?.order_type || 'DINE_IN')
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -647,6 +648,8 @@ export default function TableBillPage() {
   const [releaseConfirmOpen,  setReleaseConfirmOpen]  = useState(false)
   const [billedOrder,         setBilledOrder]         = useState(null)
   const [itemActionItem,      setItemActionItem]      = useState(null)
+  const [sessionCustomerName,  setSessionCustomerName]  = useState('')
+  const [sessionCustomerPhone, setSessionCustomerPhone] = useState('')
 
   const { data: settings } = useQuery({
     queryKey: ['restaurant-settings'],
@@ -662,9 +665,23 @@ export default function TableBillPage() {
     refetchInterval: 15_000,
   })
 
+  // Pre-fill customer info from session (e.g. set by QR customer), but only if
+  // the biller hasn't already typed something in the footer inputs.
+  useEffect(() => {
+    if (session?.customer_name && !sessionCustomerName) {
+      setSessionCustomerName(session.customer_name)
+    }
+    if (session?.customer_phone && !sessionCustomerPhone) {
+      setSessionCustomerPhone(session.customer_phone)
+    }
+  }, [session?.customer_name, session?.customer_phone]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Release PENDING_PAYMENT batches to kitchen (payment already collected, session stays open)
   const releaseMutation = useMutation({
-    mutationFn: () => tablesAPI.bill(sessionId, {}),
+    mutationFn: () => tablesAPI.bill(sessionId, {
+      customer_name:  sessionCustomerName,
+      customer_phone: sessionCustomerPhone,
+    }),
     onSuccess: () => {
       qc.invalidateQueries(['table-session', sessionId])
       qc.invalidateQueries(['tables-grid'])
@@ -869,9 +886,41 @@ export default function TableBillPage() {
               Tax ({gstDisplay}%) ₹{tax.toFixed(2)}
             </div>
           </div>
+
+          {/* Customer info — pre-filled from QR order or entered by biller */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-gray-500">
+              Customer Info <span className="font-normal text-gray-400">(optional)</span>
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="tel"
+                inputMode="numeric"
+                maxLength={15}
+                className="input py-1.5 text-sm flex-1"
+                value={sessionCustomerPhone}
+                onChange={e => setSessionCustomerPhone(e.target.value.replace(/\D/g, '').slice(0, 15))}
+                placeholder="Phone"
+              />
+              <input
+                className="input py-1.5 text-sm flex-1"
+                maxLength={30}
+                value={sessionCustomerName}
+                onChange={e => setSessionCustomerName(e.target.value)}
+                placeholder="Name"
+              />
+            </div>
+          </div>
+
           {hasPendingPayment && pendingPaymentTotal > 0 && (
             <button
-              onClick={() => setReleaseConfirmOpen(true)}
+              onClick={() => {
+                if (sessionCustomerPhone.length > 0 && sessionCustomerPhone.length < 10) {
+                  toast.error('Enter a valid 10-digit phone number, or leave it blank.')
+                  return
+                }
+                setReleaseConfirmOpen(true)
+              }}
               disabled={releaseMutation.isPending}
               className="btn-primary w-full justify-center text-base py-3 disabled:opacity-40"
             >
@@ -938,6 +987,8 @@ export default function TableBillPage() {
         gstRate={gstRate}
         title="End Session — Final Bill"
         onBill={(data) => { setBillOpen(false); endMutation.mutate(data) }}
+        initialName={sessionCustomerName}
+        initialPhone={sessionCustomerPhone}
       />
       <TableBillReceiptModal
         open={!!billedOrder}
