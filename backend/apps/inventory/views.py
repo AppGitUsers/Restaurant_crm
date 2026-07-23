@@ -163,9 +163,28 @@ class PackagingItemViewSet(viewsets.ModelViewSet):
     search_fields      = ['name']
     ordering_fields    = ['name', 'current_quantity']
 
+    def perform_create(self, serializer):
+        item = serializer.save()
+        logger.info("PackagingItem created: admin=%s name=%s unit=%s threshold=%d",
+                    self.request.user, item.name, item.unit, item.low_stock_threshold)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        item = serializer.instance
+        logger.info("PackagingItem updated: admin=%s name=%s fields=%s",
+                    self.request.user, item.name, list(self.request.data.keys()))
+
+    def perform_destroy(self, instance):
+        logger.info("PackagingItem deleted: admin=%s name=%s qty_at_delete=%d",
+                    self.request.user, instance.name, instance.current_quantity)
+        instance.delete()
+
     @action(detail=False, methods=['get'])
     def low_stock(self, request):
         low = [p for p in self.get_queryset() if p.is_low]
+        if low:
+            logger.warning("PackagingItem low-stock fetched: user=%s items=%s",
+                           request.user, [p.name for p in low])
         return Response(PackagingItemSerializer(low, many=True).data)
 
     @action(detail=True, methods=['post'])
@@ -178,10 +197,11 @@ class PackagingItemViewSet(viewsets.ModelViewSet):
             quantity = int(quantity)
         except (ValueError, TypeError):
             return Response({'error': 'quantity must be an integer'}, status=400)
+        old_qty = item.current_quantity
         item.current_quantity = quantity
         item.save(update_fields=['current_quantity'])
-        logger.info("PackagingItem adjusted: admin=%s item=%s new_qty=%d",
-                    request.user, item.name, quantity)
+        logger.info("PackagingItem adjusted: admin=%s item=%s old_qty=%d new_qty=%d",
+                    request.user, item.name, old_qty, quantity)
         return Response(PackagingItemSerializer(item).data)
 
 
@@ -192,3 +212,22 @@ class FoodTypePackagingViewSet(viewsets.ModelViewSet):
     serializer_class   = FoodTypePackagingSerializer
     permission_classes = [IsAdmin]
     filterset_fields   = ['food_type', 'order_type']
+
+    def perform_create(self, serializer):
+        mapping = serializer.save()
+        logger.info("FoodTypePackaging created: admin=%s food_type=%s packaging=%s order_type=%s qty=%d",
+                    self.request.user, mapping.food_type.name, mapping.packaging_item.name,
+                    mapping.order_type, mapping.qty_per_serving)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        mapping = serializer.instance
+        logger.info("FoodTypePackaging updated: admin=%s food_type=%s packaging=%s fields=%s",
+                    self.request.user, mapping.food_type.name, mapping.packaging_item.name,
+                    list(self.request.data.keys()))
+
+    def perform_destroy(self, instance):
+        logger.info("FoodTypePackaging deleted: admin=%s food_type=%s packaging=%s order_type=%s",
+                    self.request.user, instance.food_type.name, instance.packaging_item.name,
+                    instance.order_type)
+        instance.delete()

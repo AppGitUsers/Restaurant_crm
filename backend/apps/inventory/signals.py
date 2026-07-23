@@ -1,7 +1,10 @@
+import logging
 from django.db.models.signals import post_save
 from django.db.models import Sum, F
 from django.dispatch import receiver
 from .models import InvoicePayment, VendorInvoice, Stock, StockTransaction
+
+logger = logging.getLogger(__name__)
 
 
 @receiver(post_save, sender=InvoicePayment)
@@ -72,6 +75,8 @@ def push_stock_on_receive(sender, instance, **kwargs):
             PackagingItem.objects.filter(pk=item.packaging_item_id).update(
                 current_quantity=F('current_quantity') + int(stock_qty)
             )
+            logger.info("PackagingItem restocked via invoice: invoice=%s item=%s qty_added=%d",
+                        instance.invoice_number, item.packaging_item.name, int(stock_qty))
 
     # Two-pass recalc: components first, then combos
     try:

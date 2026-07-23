@@ -30,10 +30,18 @@ def _deduct_packaging_for_order(order):
             pkg_id = mapping.packaging_item_id
             deductions[pkg_id] = deductions.get(pkg_id, 0) + mapping.qty_per_serving * oi.quantity
 
+    if not deductions:
+        logger.debug("_deduct_packaging_for_order: no packaging mappings matched order=%s type=%s",
+                     order.order_number, order.order_type)
+        return
+
+    pkg_names = {p.id: p.name for p in PackagingItem.objects.filter(pk__in=deductions.keys())}
     for pkg_id, qty in deductions.items():
         PackagingItem.objects.filter(pk=pkg_id).update(
             current_quantity=F('current_quantity') - qty
         )
+        logger.info("Packaging deducted: order=%s type=%s item=%s qty=%d",
+                    order.order_number, order.order_type, pkg_names.get(pkg_id, pkg_id), qty)
 
 
 class OrderViewSet(viewsets.ModelViewSet):

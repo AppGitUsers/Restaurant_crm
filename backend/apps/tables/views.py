@@ -661,13 +661,15 @@ def _reverse_item_packaging(item, qty_to_reverse):
     Table order items are skipped because packaging is not deducted until billing time.
     """
     if not item.batch.billing_order_id:
-        return  # Table-session item: packaging not deducted yet at cancel time
+        logger.debug("_reverse_item_packaging: skipped (table session item, packaging not yet deducted) item=%d", item.id)
+        return
     fi = item.food_item
     if not fi or not fi.food_type_id:
         return
     from django.db.models import F
     from apps.inventory.models import PackagingItem, FoodTypePackaging
     order_type = item.batch.billing_order.order_type
+    restored   = []
     for mapping in FoodTypePackaging.objects.filter(
         food_type_id=fi.food_type_id,
         order_type=order_type,
@@ -676,6 +678,12 @@ def _reverse_item_packaging(item, qty_to_reverse):
         PackagingItem.objects.filter(pk=mapping.packaging_item_id).update(
             current_quantity=F('current_quantity') + qty
         )
+        restored.append((mapping.packaging_item_id, qty))
+    if restored:
+        logger.info("Packaging restored on cancel: item=%d food=%s order=%s type=%s restored=%s",
+                    item.id, fi.name,
+                    item.batch.billing_order.order_number, order_type,
+                    [(r[0], r[1]) for r in restored])
 
 
 def _reverse_item_stock(item, qty_to_reverse):
@@ -1263,9 +1271,9 @@ class TableSessionEndView(APIView):
             session.table.save(update_fields=['is_accepting_orders'])
 
         if order:
-            logger.info("Session billed: user=%s session=%d order=%s total=%s method=%s customer=%s",
+            logger.info("Session billed: user=%s session=%d order=%s total=%s method=%s type=%s customer=%s",
                         request.user, session_id, order.order_number,
-                        order.total_amount, payment_method, customer_name or 'Walk-in')
+                        order.total_amount, payment_method, order_type, customer_name or 'Walk-in')
             try:
                 from apps.notifications.utils import send_bill_notification
                 send_bill_notification(order)
