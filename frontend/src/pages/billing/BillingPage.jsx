@@ -597,6 +597,71 @@ function CartPanel({ onPlaceOrder, isLoading = false }) {
 }
 
 // ── Bill modal ────────────────────────────────────────
+function printBill(order) {
+  const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+  const items   = order.items || []
+  const sub     = parseFloat(order.subtotal    || 0)
+  const disc    = parseFloat(order.discount    || 0)
+  const tax     = parseFloat(order.tax_amount  || 0)
+  const total   = parseFloat(order.total_amount || 0)
+
+  const rows = items.map(item => {
+    const name = item.food_item_name || item.name || 'Item'
+    return `<tr>
+      <td>${name}${item.notes ? `<br/><span class="note">&#x21B3; ${item.notes}</span>` : ''}</td>
+      <td class="c">&#xD7;${item.quantity}</td>
+      <td class="r">&#x20B9;${parseFloat(item.line_total || 0).toFixed(2)}</td>
+    </tr>`
+  }).join('')
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<title>Receipt ${order.order_number}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Courier New',monospace;font-size:12px;width:80mm;padding:6mm 4mm}
+.ctr{text-align:center}.bold{font-weight:bold}
+.dash{border-top:1px dashed #000;margin:5px 0}
+table{width:100%;border-collapse:collapse}
+td,th{vertical-align:top;padding:1px 0;font-size:11px}
+.c{text-align:center;width:28px}.r{text-align:right;width:64px}
+.note{font-size:10px;color:#555}
+.sum{display:flex;justify-content:space-between;padding:1px 0;font-size:11px}
+.tot{font-size:14px;font-weight:bold}
+</style></head><body>
+<div class="ctr bold" style="font-size:15px;margin-bottom:2px">BILL RECEIPT</div>
+<div class="ctr" style="font-size:10px;margin-bottom:6px">${dateStr} &nbsp; ${timeStr}</div>
+<div class="dash"></div>
+<div style="font-size:11px;margin-bottom:4px">
+  <div><b>Bill No:</b> ${order.order_number}</div>
+  ${order.customer_name  ? `<div><b>Customer:</b> ${order.customer_name}</div>`  : ''}
+  ${order.customer_phone ? `<div><b>Phone:</b> ${order.customer_phone}</div>` : ''}
+</div>
+<div class="dash"></div>
+<table><thead><tr style="opacity:0.6;font-size:10px;text-transform:uppercase">
+  <th style="text-align:left;padding-bottom:3px">Item</th><th class="c">Qty</th><th class="r">Amt</th>
+</tr></thead><tbody>${rows}</tbody></table>
+<div class="dash"></div>
+<div class="sum"><span>Subtotal</span><span>&#x20B9;${sub.toFixed(2)}</span></div>
+${disc > 0 ? `<div class="sum"><span>Discount</span><span>-&#x20B9;${disc.toFixed(2)}</span></div>` : ''}
+<div class="sum"><span>Tax</span><span>&#x20B9;${tax.toFixed(2)}</span></div>
+<div class="dash"></div>
+<div class="sum tot"><span>TOTAL</span><span>&#x20B9;${total.toFixed(2)}</span></div>
+<div class="dash"></div>
+<div class="sum" style="font-size:11px"><span>Payment</span><span>${order.payment_method || ''}</span></div>
+<div class="dash"></div>
+<div class="ctr" style="margin-top:8px;font-size:11px">Thank you! Visit again &#x1F64F;</div><br/>
+</body></html>`
+
+  const w = window.open('', '_blank', 'width=360,height=600,menubar=no,toolbar=no')
+  if (!w) { toast.error('Allow pop-ups to print the receipt'); return }
+  w.document.write(html)
+  w.document.close()
+  w.focus()
+  w.print()
+  w.onafterprint = () => w.close()
+}
+
 function BillModal({ order, onClose }) {
   if (!order) return null
 
@@ -655,6 +720,7 @@ function BillModal({ order, onClose }) {
             <MessageCircle size={15} />WhatsApp
           </button>
         )}
+        <button onClick={() => printBill(order)} className="btn-secondary flex items-center gap-1.5"><Printer size={15} />Print</button>
         <button onClick={downloadPdf} className="btn-primary"><Printer size={15} />Download PDF</button>
       </>}
     >
