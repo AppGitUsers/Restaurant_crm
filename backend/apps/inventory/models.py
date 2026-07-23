@@ -78,9 +78,52 @@ class VendorInvoice(models.Model):
         return f"{self.invoice_number} — {self.vendor.name} ({self.status})"
 
 
+class PackagingItem(models.Model):
+    name                = models.CharField(max_length=200, unique=True)
+    unit                = models.CharField(max_length=50, default='pcs')
+    current_quantity    = models.IntegerField(default=0)
+    low_stock_threshold = models.IntegerField(default=0)
+    created_at          = models.DateTimeField(auto_now_add=True)
+    updated_at          = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.name} ({self.current_quantity} {self.unit})"
+
+    @property
+    def is_low(self):
+        return self.current_quantity <= self.low_stock_threshold
+
+
+class FoodTypePackaging(models.Model):
+    class OrderType(models.TextChoices):
+        DINE_IN = 'DINE_IN', 'Dine In'
+        PARCEL  = 'PARCEL',  'Parcel'
+
+    food_type       = models.ForeignKey('menu.FoodType', on_delete=models.CASCADE,
+                                        related_name='packaging_mappings')
+    packaging_item  = models.ForeignKey(PackagingItem, on_delete=models.CASCADE,
+                                        related_name='food_type_mappings')
+    order_type      = models.CharField(max_length=10, choices=OrderType.choices)
+    qty_per_serving = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        unique_together = ['food_type', 'packaging_item', 'order_type']
+        ordering        = ['food_type__name', 'order_type']
+
+    def __str__(self):
+        return (f"{self.food_type.name} → {self.packaging_item.name} "
+                f"×{self.qty_per_serving} ({self.order_type})")
+
+
 class InvoiceItem(models.Model):
     invoice         = models.ForeignKey(VendorInvoice, on_delete=models.CASCADE, related_name='items')
-    ingredient      = models.ForeignKey(Ingredient, on_delete=models.PROTECT)
+    ingredient      = models.ForeignKey(Ingredient, on_delete=models.PROTECT,
+                                        null=True, blank=True)
+    packaging_item  = models.ForeignKey(PackagingItem, on_delete=models.PROTECT,
+                                        null=True, blank=True)
     quantity        = models.DecimalField(max_digits=12, decimal_places=3,
                                           help_text='Number of packages purchased')
     qty_per_package = models.DecimalField(max_digits=12, decimal_places=3, default=1,
@@ -97,7 +140,11 @@ class InvoiceItem(models.Model):
         return self.quantity * self.unit_price
 
     def __str__(self):
-        return f"{self.ingredient.name} × {self.quantity}"
+        if self.ingredient_id:
+            return f"{self.ingredient.name} × {self.quantity}"
+        if self.packaging_item_id:
+            return f"{self.packaging_item.name} × {self.quantity}"
+        return f"? × {self.quantity}"
 
 
 class InvoicePayment(models.Model):

@@ -5,10 +5,12 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from apps.accounts.permissions import IsAdmin, IsAdminOrBiller
-from .models import Vendor, Stock, VendorInvoice, InvoicePayment, StockTransaction
+from .models import (Vendor, Stock, VendorInvoice, InvoicePayment, StockTransaction,
+                     PackagingItem, FoodTypePackaging)
 from .serializers import (VendorSerializer, StockSerializer, VendorInvoiceSerializer,
                            VendorInvoiceWriteSerializer, InvoicePaymentSerializer,
-                           StockTransactionSerializer)
+                           StockTransactionSerializer, PackagingItemSerializer,
+                           FoodTypePackagingSerializer)
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +88,7 @@ class StockViewSet(viewsets.ModelViewSet):
 class VendorInvoiceViewSet(viewsets.ModelViewSet):
     queryset = (VendorInvoice.objects
                 .select_related('vendor')
-                .prefetch_related('items__ingredient', 'payments')
+                .prefetch_related('items__ingredient', 'items__packaging_item', 'payments')
                 .all())
     permission_classes = [IsAdmin]
     filterset_fields   = ['status', 'vendor', 'stock_updated']
@@ -121,7 +123,7 @@ class VendorInvoiceViewSet(viewsets.ModelViewSet):
                            request.user, invoice.invoice_number)
             return Response({'detail': 'Stock already updated for this invoice.'}, status=400)
         invoice.stock_updated = True
-        invoice.save()
+        invoice.save(update_fields=['stock_updated'])
         logger.info("Invoice marked received (stock updated): admin=%s invoice=%s vendor=%s",
                     request.user, invoice.invoice_number, invoice.vendor.name)
         return Response({'detail': 'Stock updated from invoice.'})
@@ -152,3 +154,41 @@ class StockTransactionViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAdmin]
     filterset_fields   = ['tx_type', 'ingredient']
     search_fields      = ['ingredient__name', 'reference', 'note']
+
+
+class PackagingItemViewSet(viewsets.ModelViewSet):
+    queryset           = PackagingItem.objects.all()
+    serializer_class   = PackagingItemSerializer
+    permission_classes = [IsAdmin]
+    search_fields      = ['name']
+    ordering_fields    = ['name', 'current_quantity']
+
+    @action(detail=False, methods=['get'])
+    def low_stock(self, request):
+        low = [p for p in self.get_queryset() if p.is_low]
+        return Response(PackagingItemSerializer(low, many=True).data)
+
+    @action(detail=True, methods=['post'])
+    def adjust(self, request, pk=None):
+        item     = self.get_object()
+        quantity = request.data.get('quantity')
+        if quantity is None:
+            return Response({'error': 'quantity is required'}, status=400)
+        try:
+            quantity = int(quantity)
+        except (ValueError, TypeError):
+            return Response({'error': 'quantity must be an integer'}, status=400)
+        item.current_quantity = quantity
+        item.save(update_fields=['current_quantity'])
+        logger.info("PackagingItem adjusted: admin=%s item=%s new_qty=%d",
+                    request.user, item.name, quantity)
+        return Response(PackagingItemSerializer(item).data)
+
+
+class FoodTypePackagingViewSet(viewsets.ModelViewSet):
+    queryset = (FoodTypePackaging.objects
+                .select_related('food_type', 'packaging_item')
+                .all())
+    serializer_class   = FoodTypePackagingSerializer
+    permission_classes = [IsAdmin]
+    filterset_fields   = ['food_type', 'order_type']

@@ -108,11 +108,12 @@ class TableOrderBatchSerializer(serializers.ModelSerializer):
     session_id   = serializers.SerializerMethodField()
     order_number = serializers.SerializerMethodField()
     is_counter   = serializers.SerializerMethodField()
+    order_type   = serializers.SerializerMethodField()
 
     class Meta:
         model  = TableOrderBatch
         fields = ['id', 'table_number', 'session_id', 'order_number', 'is_counter',
-                  'status', 'added_by', 'placed_at', 'served_at', 'notes', 'items']
+                  'order_type', 'status', 'added_by', 'placed_at', 'served_at', 'notes', 'items']
 
     def get_table_number(self, obj):
         return obj.session.table.number if obj.session_id else None
@@ -125,6 +126,11 @@ class TableOrderBatchSerializer(serializers.ModelSerializer):
 
     def get_is_counter(self, obj):
         return obj.session_id is None
+
+    def get_order_type(self, obj):
+        if obj.billing_order_id:
+            return obj.billing_order.order_type
+        return 'DINE_IN'
 
 
 class TableSessionSerializer(serializers.ModelSerializer):

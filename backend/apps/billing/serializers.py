@@ -33,7 +33,7 @@ class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Order
         fields = ['id', 'order_number', 'share_token', 'biller', 'biller_name',
-                  'customer_name', 'customer_phone', 'status', 'payment_method',
+                  'customer_name', 'customer_phone', 'status', 'payment_method', 'order_type',
                   'subtotal', 'discount', 'tax_percent', 'tax_amount', 'total_amount',
                   'notes', 'items', 'created_at', 'updated_at']
         read_only_fields = ['order_number', 'share_token', 'subtotal', 'tax_amount', 'total_amount']
@@ -49,7 +49,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = Order
-        fields = ['customer_name', 'customer_phone', 'payment_method',
+        fields = ['customer_name', 'customer_phone', 'payment_method', 'order_type',
                   'discount', 'tax_percent', 'notes', 'items']
 
     def validate_customer_phone(self, value):

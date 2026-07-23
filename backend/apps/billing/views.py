@@ -13,6 +13,29 @@ from utils.pdf_generator import generate_bill_pdf
 logger = logging.getLogger(__name__)
 
 
+def _deduct_packaging_for_order(order):
+    """Deduct packaging items based on order_type for every OrderItem in the order."""
+    from django.db.models import F
+    from apps.inventory.models import PackagingItem, FoodTypePackaging
+
+    deductions = {}  # {packaging_item_id: total_qty_to_deduct}
+    for oi in order.items.select_related('food_item__food_type').all():
+        fi = oi.food_item
+        if not fi or not fi.food_type_id:
+            continue
+        for mapping in FoodTypePackaging.objects.filter(
+            food_type_id=fi.food_type_id,
+            order_type=order.order_type,
+        ):
+            pkg_id = mapping.packaging_item_id
+            deductions[pkg_id] = deductions.get(pkg_id, 0) + mapping.qty_per_serving * oi.quantity
+
+    for pkg_id, qty in deductions.items():
+        PackagingItem.objects.filter(pk=pkg_id).update(
+            current_quantity=F('current_quantity') - qty
+        )
+
+
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = (Order.objects
                 .select_related('biller')
@@ -63,8 +86,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.payment_method = payment_method
         order.status         = 'PAID'
         order.save()  # triggers billing/signals.py → handle_order_paid → creates income Transaction
-        logger.info("Order paid: biller=%s order=%s method=%s total=%.2f",
-                    request.user, order.order_number, payment_method, float(order.total_amount))
+        _deduct_packaging_for_order(order)
+        logger.info("Order paid: biller=%s order=%s method=%s total=%.2f type=%s",
+                    request.user, order.order_number, payment_method,
+                    float(order.total_amount), order.order_type)
 
         # Counter order → create kitchen batch so kitchen sees it
         if not order.table_session_id:

@@ -405,7 +405,7 @@ function CustomerFields({ customerName, customerPhone, setCustomer }) {
 }
 
 // ── Cart panel ────────────────────────────────────────
-function CartPanel({ onPlaceOrder, isLoading = false }) {
+function CartPanel({ onPlaceOrder, isLoading = false, orderType, setOrderType }) {
   const {
     items, removeItem, updateQty, setItemAddons,
     customerName, customerPhone, paymentMethod, discount, taxPercent,
@@ -560,6 +560,23 @@ function CartPanel({ onPlaceOrder, isLoading = false }) {
       />
 
       <div className="mt-2 space-y-2">
+        {/* Dine In / Parcel toggle */}
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+          <button
+            type="button"
+            onClick={() => setOrderType('DINE_IN')}
+            className={`flex-1 py-1.5 transition-colors ${orderType === 'DINE_IN' ? 'bg-primary-500 text-white' : 'text-gray-500 hover:bg-gray-50'}`}
+          >
+            Dine In
+          </button>
+          <button
+            type="button"
+            onClick={() => setOrderType('PARCEL')}
+            className={`flex-1 py-1.5 border-l border-gray-200 transition-colors ${orderType === 'PARCEL' ? 'bg-primary-500 text-white' : 'text-gray-500 hover:bg-gray-50'}`}
+          >
+            Parcel
+          </button>
+        </div>
         <div className="flex gap-2">
           <select className="select text-xs py-1.5 flex-1" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
             <option value="CASH">Cash</option>
@@ -767,6 +784,7 @@ export default function BillingPage() {
   const [billOrder, setBill]          = useState(null)
   const [showCustomize, setCustomize] = useState(false)
   const [mobileCartOpen, setCartOpen] = useState(false)
+  const [orderType, setOrderType]     = useState('DINE_IN')
   const { addItem, addCustomItem, getItemCount, setTaxPercent } = useCartStore()
 
   // Sync GST rate from settings into cart store on page load
@@ -811,6 +829,7 @@ export default function BillingPage() {
         customer_name:  customerName,
         customer_phone: customerPhone,
         payment_method: paymentMethod,
+        order_type:     orderType,
         discount,
         tax_percent: taxPercent,
         items: items.map(i => {
@@ -941,7 +960,7 @@ export default function BillingPage() {
             </span>
           )}
         </div>
-        <CartPanel onPlaceOrder={() => placeOrder.mutate()} isLoading={placeOrder.isPending} />
+        <CartPanel onPlaceOrder={() => placeOrder.mutate()} isLoading={placeOrder.isPending} orderType={orderType} setOrderType={setOrderType} />
       </div>
 
       {/* Mobile: cart overlay drawer */}
@@ -964,7 +983,7 @@ export default function BillingPage() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
-              <CartPanel onPlaceOrder={() => { placeOrder.mutate(); setCartOpen(false) }} isLoading={placeOrder.isPending} />
+              <CartPanel onPlaceOrder={() => { placeOrder.mutate(); setCartOpen(false) }} isLoading={placeOrder.isPending} orderType={orderType} setOrderType={setOrderType} />
             </div>
           </div>
         </div>

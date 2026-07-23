@@ -391,6 +391,13 @@ function ActiveOrders({ batches, pendingCount, preparingCount, advance, onCancel
                   {batch.added_by === 'BILLER' && !batch.is_counter && (
                     <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">Biller</span>
                   )}
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    batch.order_type === 'PARCEL'
+                      ? 'bg-orange-500/30 text-orange-200 border border-orange-400/40'
+                      : 'bg-white/20 text-white/80'
+                  }`}>
+                    {batch.order_type === 'PARCEL' ? 'Parcel' : 'Dine In'}
+                  </span>
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <p className="text-white/90 text-xs font-semibold">{meta.label}</p>
@@ -545,6 +552,13 @@ function ServedOrders({ onCancelItem }) {
                       )}
                     </>
                   )}
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full w-fit ${
+                    batch.order_type === 'PARCEL'
+                      ? 'bg-orange-500/20 text-orange-400'
+                      : 'bg-gray-700 text-gray-400'
+                  }`}>
+                    {batch.order_type === 'PARCEL' ? 'Parcel' : 'Dine In'}
+                  </span>
                 </div>
 
                 {/* Items */}

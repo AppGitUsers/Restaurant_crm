@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { inventoryAPI, menuAPI } from '@/api'
 import { PageLoader, Modal, SearchBar, StatusBadge, ConfirmDialog, Field, Empty } from '@/components/ui'
 import toast from 'react-hot-toast'
-import { Plus, Edit2, Trash2, Package, Truck, FileText, CreditCard, AlertTriangle } from 'lucide-react'
+import { Plus, Edit2, Trash2, Package, Truck, FileText, CreditCard, AlertTriangle, Box, Tag } from 'lucide-react'
 
 // ── Searchable ingredient combobox ────────────────────
 function IngredientSelect({ ingredients, value, onChange }) {
@@ -28,6 +28,53 @@ function IngredientSelect({ ingredients, value, onChange }) {
       <input
         className="input w-full"
         placeholder="Search ingredient…"
+        value={open ? search : (selected ? `${selected.name} (${selected.unit})` : '')}
+        onFocus={() => { setOpen(true); setSearch('') }}
+        onChange={e => setSearch(e.target.value)}
+        onKeyDown={e => e.key === 'Escape' && setOpen(false)}
+      />
+      {open && (
+        <div className="absolute left-0 right-0 z-[100] mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-44 overflow-y-auto">
+          {filtered.length === 0
+            ? <p className="px-3 py-2 text-sm text-gray-400">No results</p>
+            : filtered.map(i => (
+              <button key={i.id} type="button"
+                className="w-full text-left px-3 py-2 text-sm hover:bg-primary-50 flex justify-between items-center"
+                onMouseDown={() => { onChange(String(i.id)); setOpen(false); setSearch('') }}>
+                <span className="font-medium">{i.name}</span>
+                <span className="text-gray-400 text-xs ml-2">{i.unit}</span>
+              </button>
+            ))
+          }
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Searchable packaging-item combobox ───────────────
+function PackagingSelect({ items, value, onChange }) {
+  const [search, setSearch] = useState('')
+  const [open, setOpen]     = useState(false)
+  const ref                 = useRef(null)
+
+  const list     = items || []
+  const selected = list.find(i => String(i.id) === String(value))
+  const filtered = search
+    ? list.filter(i => i.name.toLowerCase().includes(search.toLowerCase()))
+    : list
+
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        className="input w-full"
+        placeholder="Search packaging…"
         value={open ? search : (selected ? `${selected.name} (${selected.unit})` : '')}
         onFocus={() => { setOpen(true); setSearch('') }}
         onChange={e => setSearch(e.target.value)}
@@ -225,8 +272,9 @@ function InvoiceTab() {
   const [payModal, setPayModal]   = useState(null)
   const [payForm, setPayForm]     = useState({ amount: '', payment_date: '', payment_method: 'Cash', notes: '' })
 
-  const { data: vendors }     = useQuery({ queryKey: ['vendors'], queryFn: () => inventoryAPI.vendors.list().then(r => r.data.results || r.data) })
-  const { data: ingredients } = useQuery({ queryKey: ['ingredients'], queryFn: () => menuAPI.ingredients.list().then(r => r.data.results || r.data) })
+  const { data: vendors }      = useQuery({ queryKey: ['vendors'], queryFn: () => inventoryAPI.vendors.list().then(r => r.data.results || r.data) })
+  const { data: ingredients }  = useQuery({ queryKey: ['ingredients'], queryFn: () => menuAPI.ingredients.list().then(r => r.data.results || r.data) })
+  const { data: packagingList }= useQuery({ queryKey: ['packaging'], queryFn: () => inventoryAPI.packaging.list().then(r => r.data.results || r.data) })
 
   const emptyForm = {
     vendor: '', invoice_number: '', invoice_date: today,
@@ -259,7 +307,7 @@ function InvoiceTab() {
     items.reduce((s, r) => s + (parseFloat(r.quantity) || 0) * (parseFloat(r.unit_price) || 0), 0)
 
   const addInvItem = () => {
-    setForm(f => ({ ...f, items: [...f.items, { ingredient: '', quantity: '', qty_per_package: '1', unit_price: '' }] }))
+    setForm(f => ({ ...f, items: [...f.items, { item_type: 'ingredient', ingredient: '', packaging_item: '', quantity: '', qty_per_package: '1', unit_price: '' }] }))
   }
 
   const removeInvItem = i => {
@@ -292,6 +340,13 @@ function InvoiceTab() {
       ...form,
       invoice_number: form.invoice_number || null,
       due_date: form.due_date || null,
+      items: form.items.map(row => ({
+        ingredient:     row.item_type === 'ingredient' ? (row.ingredient || null) : null,
+        packaging_item: row.item_type === 'packaging'  ? (row.packaging_item || null) : null,
+        quantity:        row.quantity,
+        qty_per_package: row.qty_per_package,
+        unit_price:      row.unit_price,
+      })),
     })
   }
 
@@ -408,7 +463,8 @@ function InvoiceTab() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
                 <tr>
-                  <th className="text-left px-3 py-2">Ingredient</th>
+                  <th className="text-left px-2 py-2 w-28">Type</th>
+                  <th className="text-left px-3 py-2">Item</th>
                   <th className="text-center px-2 py-2 w-20">Packages</th>
                   <th className="text-center px-2 py-2 w-24">Qty / Pkg</th>
                   <th className="text-center px-2 py-2 w-28">Unit Price (₹)</th>
@@ -420,8 +476,20 @@ function InvoiceTab() {
                 {form.items.map((row, i) => (
                   <tr key={i} className="border-t border-gray-100">
                     <td className="px-2 py-1.5">
-                      <IngredientSelect ingredients={ingredients} value={row.ingredient}
-                        onChange={v => updateInvItem(i, 'ingredient', v)} />
+                      <select className="select text-xs"
+                        value={row.item_type}
+                        onChange={e => updateInvItem(i, 'item_type', e.target.value)}>
+                        <option value="ingredient">Ingredient</option>
+                        <option value="packaging">Packaging</option>
+                      </select>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      {row.item_type === 'ingredient'
+                        ? <IngredientSelect ingredients={ingredients} value={row.ingredient}
+                            onChange={v => updateInvItem(i, 'ingredient', v)} />
+                        : <PackagingSelect items={packagingList} value={row.packaging_item}
+                            onChange={v => updateInvItem(i, 'packaging_item', v)} />
+                      }
                     </td>
                     <td className="px-1 py-1.5">
                       <input type="number" min="0" step="0.001" placeholder="5"
@@ -497,11 +565,12 @@ function InvoiceTab() {
               <p className="label mb-2">Items</p>
               <div className="table-container">
                 <table className="table">
-                  <thead><tr><th>Ingredient</th><th>Pkgs</th><th>Qty/Pkg</th><th>Stock Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
+                  <thead><tr><th>Item</th><th>Type</th><th>Pkgs</th><th>Qty/Pkg</th><th>Stock Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
                   <tbody>
                     {detailModal.items.map((item, i) => (
                       <tr key={i}>
-                        <td>{item.ingredient_name}</td>
+                        <td>{item.ingredient_name || item.packaging_item_name || '—'}</td>
+                        <td><span className={`badge ${item.item_type === 'packaging' ? 'badge-gray' : 'badge-green'}`}>{item.item_type === 'packaging' ? 'Packaging' : 'Ingredient'}</span></td>
                         <td>{item.quantity}</td>
                         <td>{item.qty_per_package} {item.unit}</td>
                         <td className="font-medium text-primary-600">
@@ -571,12 +640,208 @@ function InvoiceTab() {
   )
 }
 
+// ── Packaging Tab ─────────────────────────────────────
+function PackagingTab() {
+  const qc = useQueryClient()
+  const [modal, setModal]           = useState(false)
+  const [sel, setSel]               = useState(null)
+  const [del, setDel]               = useState(null)
+  const [mapModal, setMapModal]     = useState(false)
+  const [delMap, setDelMap]         = useState(null)
+  const [adjustModal, setAdjustModal] = useState(null)
+  const [adjQty, setAdjQty]         = useState('')
+  const [form, setForm]             = useState({ name: '', unit: 'pcs', low_stock_threshold: '0' })
+  const [mapForm, setMapForm]       = useState({ food_type: '', packaging_item: '', order_type: 'DINE_IN', qty_per_serving: '1' })
+
+  const { data: items, isLoading } = useQuery({ queryKey: ['packaging'], queryFn: () => inventoryAPI.packaging.list().then(r => r.data.results || r.data) })
+  const { data: mappings }         = useQuery({ queryKey: ['food-type-mappings'], queryFn: () => inventoryAPI.foodTypeMappings.list().then(r => r.data.results || r.data) })
+  const { data: foodTypes }        = useQuery({ queryKey: ['menu-types'], queryFn: () => menuAPI.types.list().then(r => r.data.results || r.data) })
+
+  const save    = useMutation({ mutationFn: d => sel ? inventoryAPI.packaging.update(sel.id, d) : inventoryAPI.packaging.create(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['packaging'] }); setModal(false); toast.success('Saved!') } })
+  const remove  = useMutation({ mutationFn: id => inventoryAPI.packaging.delete(id), onSuccess: () => { qc.invalidateQueries({ queryKey: ['packaging'] }); setDel(null); toast.success('Deleted') } })
+  const saveMap = useMutation({ mutationFn: d => inventoryAPI.foodTypeMappings.create(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['food-type-mappings'] }); setMapModal(false); toast.success('Mapping added') } })
+  const delMapM = useMutation({ mutationFn: id => inventoryAPI.foodTypeMappings.delete(id), onSuccess: () => { qc.invalidateQueries({ queryKey: ['food-type-mappings'] }); setDelMap(null); toast.success('Mapping removed') } })
+  const adjust  = useMutation({
+    mutationFn: ({ id, quantity }) => inventoryAPI.packaging.adjust(id, { quantity }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['packaging'] })
+      setAdjustModal(null)
+      toast.success('Stock adjusted')
+    },
+    onError: () => toast.error('Failed to adjust stock'),
+  })
+
+  const openCreate = () => { setSel(null); setForm({ name: '', unit: 'pcs', low_stock_threshold: '0' }); setModal(true) }
+  const openEdit   = p => { setSel(p); setForm({ name: p.name, unit: p.unit, low_stock_threshold: String(p.low_stock_threshold) }); setModal(true) }
+  const openAdjust = p => { setAdjustModal(p); setAdjQty(String(p.current_quantity)) }
+
+  const pkgList  = items || []
+  const mapList  = mappings || []
+  const ftList   = foodTypes || []
+  const lowCount = pkgList.filter(p => p.is_low).length
+
+  return (
+    <div className="space-y-8">
+      {/* ── Packaging Items ── */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <h3 className="font-semibold text-gray-800">Packaging Items</h3>
+            {lowCount > 0 && (
+              <div className="flex items-center gap-1.5 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1">
+                <AlertTriangle size={13} className="text-red-500" />
+                <span className="text-xs text-red-600 font-medium">{lowCount} low</span>
+              </div>
+            )}
+          </div>
+          <button onClick={openCreate} className="btn-primary"><Plus size={15} />Add Item</button>
+        </div>
+
+        {isLoading && <div className="text-center py-8 text-gray-400">Loading…</div>}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {pkgList.map(p => (
+            <div key={p.id} className={`card flex flex-col gap-3 ${p.is_low ? 'border-red-200' : ''}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-semibold text-gray-800">{p.name}</p>
+                  <p className="text-xs text-gray-400">{p.unit}</p>
+                </div>
+                <span className={p.is_low ? 'badge-red flex-shrink-0' : 'badge-green flex-shrink-0'}>{p.is_low ? 'Low' : 'OK'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-2xl font-bold ${p.is_low ? 'text-red-600' : 'text-gray-800'}`}>{p.current_quantity}</span>
+                <span className="text-xs text-gray-400">/ min {p.low_stock_threshold}</span>
+              </div>
+              <div className="flex gap-1 border-t border-gray-50 pt-2">
+                <button onClick={() => openAdjust(p)} className="btn-ghost py-1 text-xs flex-1"><Edit2 size={12} />Adjust Stock</button>
+                <button onClick={() => openEdit(p)} className="btn-ghost py-1 text-xs px-2" title="Edit item"><Edit2 size={12} /></button>
+                <button onClick={() => setDel(p)} className="btn-ghost py-1 text-xs text-red-400"><Trash2 size={12} /></button>
+              </div>
+            </div>
+          ))}
+          {!isLoading && pkgList.length === 0 && <div className="col-span-full"><Empty message="No packaging items — add boxes, plates, spoons, etc." /></div>}
+        </div>
+      </div>
+
+      {/* ── Category Mappings ── */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-gray-800">Category Packaging Mappings</h3>
+          <button onClick={() => { setMapForm({ food_type: '', packaging_item: '', order_type: 'DINE_IN', qty_per_serving: '1' }); setMapModal(true) }} className="btn-outline text-sm"><Tag size={14} />Add Mapping</button>
+        </div>
+        <p className="text-xs text-gray-400 mb-3">Define which packaging items are used per food category for Dine In vs Parcel orders.</p>
+
+        <div className="hidden sm:block table-container">
+          <table className="table">
+            <thead><tr><th>Food Category</th><th>Order Type</th><th>Packaging Item</th><th>Qty / Serving</th><th></th></tr></thead>
+            <tbody>
+              {mapList.map(m => (
+                <tr key={m.id}>
+                  <td className="font-medium">{m.food_type_name}</td>
+                  <td><span className={`badge ${m.order_type === 'PARCEL' ? 'badge-gray' : 'badge-green'}`}>{m.order_type === 'PARCEL' ? 'Parcel' : 'Dine In'}</span></td>
+                  <td>{m.packaging_item_name} <span className="text-gray-400 text-xs">({m.packaging_unit})</span></td>
+                  <td>{m.qty_per_serving}</td>
+                  <td><button onClick={() => setDelMap(m)} className="btn-ghost py-1 text-red-400"><Trash2 size={13} /></button></td>
+                </tr>
+              ))}
+              {mapList.length === 0 && <tr><td colSpan={5}><Empty message="No mappings yet" /></td></tr>}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="sm:hidden space-y-2">
+          {mapList.map(m => (
+            <div key={m.id} className="card flex items-center justify-between gap-3">
+              <div>
+                <p className="font-medium text-sm">{m.food_type_name}</p>
+                <p className="text-xs text-gray-400">{m.packaging_item_name} × {m.qty_per_serving}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`badge ${m.order_type === 'PARCEL' ? 'badge-gray' : 'badge-green'}`}>{m.order_type === 'PARCEL' ? 'Parcel' : 'Dine In'}</span>
+                <button onClick={() => setDelMap(m)} className="btn-ghost py-1 text-red-400"><Trash2 size={13} /></button>
+              </div>
+            </div>
+          ))}
+          {mapList.length === 0 && <Empty message="No mappings yet" />}
+        </div>
+      </div>
+
+      {/* Modals */}
+      <Modal open={!!adjustModal} onClose={() => setAdjustModal(null)} title={`Adjust Stock — ${adjustModal?.name}`}
+        footer={
+          <>
+            <button onClick={() => setAdjustModal(null)} className="btn-ghost">Cancel</button>
+            <button
+              onClick={() => adjust.mutate({ id: adjustModal.id, quantity: parseInt(adjQty, 10) })}
+              disabled={adjust.isPending || adjQty === ''}
+              className="btn-primary"
+            >
+              Update
+            </button>
+          </>
+        }>
+        <Field label={`New Quantity (${adjustModal?.unit})`}>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            className="input"
+            value={adjQty}
+            onChange={e => setAdjQty(e.target.value)}
+            autoFocus
+          />
+        </Field>
+        {adjustModal && (
+          <p className="text-xs text-gray-400 mt-1">
+            Current: <span className="font-semibold text-gray-600">{adjustModal.current_quantity} {adjustModal.unit}</span>
+            {' · '}Threshold: <span className="font-semibold text-gray-600">{adjustModal.low_stock_threshold} {adjustModal.unit}</span>
+          </p>
+        )}
+      </Modal>
+
+      <Modal open={modal} onClose={() => setModal(false)} title={sel ? 'Edit Packaging Item' : 'Add Packaging Item'}
+        footer={<><button onClick={() => setModal(false)} className="btn-ghost">Cancel</button><button onClick={() => save.mutate(form)} disabled={save.isPending} className="btn-primary">Save</button></>}>
+        <Field label="Name" required><input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Parcel Box, Spoon" /></Field>
+        <Field label="Unit"><input className="input" value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} placeholder="pcs" /></Field>
+        <Field label="Low Stock Threshold"><input type="number" min="0" className="input" value={form.low_stock_threshold} onChange={e => setForm({ ...form, low_stock_threshold: e.target.value })} /></Field>
+      </Modal>
+
+      <Modal open={mapModal} onClose={() => setMapModal(false)} title="Add Category Mapping"
+        footer={<><button onClick={() => setMapModal(false)} className="btn-ghost">Cancel</button><button onClick={() => saveMap.mutate(mapForm)} disabled={saveMap.isPending} className="btn-primary">Add</button></>}>
+        <Field label="Food Category" required>
+          <select className="select" value={mapForm.food_type} onChange={e => setMapForm({ ...mapForm, food_type: e.target.value })}>
+            <option value="">Select category…</option>
+            {ftList.map(ft => <option key={ft.id} value={ft.id}>{ft.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Order Type">
+          <select className="select" value={mapForm.order_type} onChange={e => setMapForm({ ...mapForm, order_type: e.target.value })}>
+            <option value="DINE_IN">Dine In</option>
+            <option value="PARCEL">Parcel</option>
+          </select>
+        </Field>
+        <Field label="Packaging Item" required>
+          <select className="select" value={mapForm.packaging_item} onChange={e => setMapForm({ ...mapForm, packaging_item: e.target.value })}>
+            <option value="">Select item…</option>
+            {pkgList.map(p => <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>)}
+          </select>
+        </Field>
+        <Field label="Qty per Serving"><input type="number" min="1" className="input" value={mapForm.qty_per_serving} onChange={e => setMapForm({ ...mapForm, qty_per_serving: e.target.value })} /></Field>
+      </Modal>
+
+      <ConfirmDialog open={!!del} onClose={() => setDel(null)} onConfirm={() => remove.mutate(del?.id)} title="Delete Packaging Item" message={`Delete "${del?.name}"? This cannot be undone.`} danger />
+      <ConfirmDialog open={!!delMap} onClose={() => setDelMap(null)} onConfirm={() => delMapM.mutate(delMap?.id)} title="Remove Mapping" message={`Remove ${delMap?.food_type_name} → ${delMap?.packaging_item_name}?`} danger />
+    </div>
+  )
+}
+
 export default function InventoryPage() {
   const [tab, setTab] = useState('stock')
   const tabs = [
-    { id: 'stock',    label: 'Stock',    icon: <Package size={15} /> },
-    { id: 'invoices', label: 'Invoices', icon: <FileText size={15} /> },
-    { id: 'vendors',  label: 'Vendors',  icon: <Truck size={15} /> },
+    { id: 'stock',     label: 'Stock',     icon: <Package size={15} /> },
+    { id: 'packaging', label: 'Packaging', icon: <Box size={15} /> },
+    { id: 'invoices',  label: 'Invoices',  icon: <FileText size={15} /> },
+    { id: 'vendors',   label: 'Vendors',   icon: <Truck size={15} /> },
   ]
 
   return (
@@ -598,9 +863,10 @@ export default function InventoryPage() {
           ))}
         </div>
       </div>
-      {tab === 'stock'    && <StockTab />}
-      {tab === 'invoices' && <InvoiceTab />}
-      {tab === 'vendors'  && <VendorTab />}
+      {tab === 'stock'     && <StockTab />}
+      {tab === 'packaging' && <PackagingTab />}
+      {tab === 'invoices'  && <InvoiceTab />}
+      {tab === 'vendors'   && <VendorTab />}
     </div>
   )
 }

@@ -160,9 +160,10 @@ function AddItemsModal({ open, onClose, sessionId }) {
 
 // ── Bill Confirm Modal ───────────────────────────────────────────────────────
 function BillModal({ open, onClose, session, gstRate, onBill, title = 'Collect Payment' }) {
-  const [method,  setMethod]  = useState('CASH')
-  const [phone,   setPhone]   = useState('')
-  const [name,    setName]    = useState('')
+  const [method,    setMethod]    = useState('CASH')
+  const [phone,     setPhone]     = useState('')
+  const [name,      setName]      = useState('')
+  const [orderType, setOrderType] = useState('DINE_IN')
 
   if (!session) return null
 
@@ -203,7 +204,7 @@ function BillModal({ open, onClose, session, gstRate, onBill, title = 'Collect P
                 toast.error('Phone number is required (10 digits)')
                 return
               }
-              onBill({ payment_method: method, customer_name: name, customer_phone: phone })
+              onBill({ payment_method: method, customer_name: name, customer_phone: phone, order_type: orderType })
             }}
             className="btn-primary"
           >
@@ -219,6 +220,20 @@ function BillModal({ open, onClose, session, gstRate, onBill, title = 'Collect P
           <div className="flex justify-between"><span className="text-gray-500">Tax ({gstDisplay}%)</span><span>₹{tax.toFixed(2)}</span></div>
           <div className="flex justify-between font-bold text-base border-t border-gray-200 pt-2">
             <span>Total</span><span className="text-primary-600">₹{total.toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Order Type</label>
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+            <button type="button" onClick={() => setOrderType('DINE_IN')}
+              className={`flex-1 py-1.5 transition-colors ${orderType === 'DINE_IN' ? 'bg-primary-500 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
+              Dine In
+            </button>
+            <button type="button" onClick={() => setOrderType('PARCEL')}
+              className={`flex-1 py-1.5 border-l border-gray-200 transition-colors ${orderType === 'PARCEL' ? 'bg-primary-500 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
+              Parcel
+            </button>
           </div>
         </div>
 

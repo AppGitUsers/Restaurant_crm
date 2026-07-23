@@ -655,6 +655,29 @@ def _validate_kitchen_pin(pin, user):
     return user.check_password(pin)
 
 
+def _reverse_item_packaging(item, qty_to_reverse):
+    """
+    Restore packaging stock for qty_to_reverse units of a counter-order item.
+    Table order items are skipped because packaging is not deducted until billing time.
+    """
+    if not item.batch.billing_order_id:
+        return  # Table-session item: packaging not deducted yet at cancel time
+    fi = item.food_item
+    if not fi or not fi.food_type_id:
+        return
+    from django.db.models import F
+    from apps.inventory.models import PackagingItem, FoodTypePackaging
+    order_type = item.batch.billing_order.order_type
+    for mapping in FoodTypePackaging.objects.filter(
+        food_type_id=fi.food_type_id,
+        order_type=order_type,
+    ):
+        qty = mapping.qty_per_serving * qty_to_reverse
+        PackagingItem.objects.filter(pk=mapping.packaging_item_id).update(
+            current_quantity=F('current_quantity') + qty
+        )
+
+
 def _reverse_item_stock(item, qty_to_reverse):
     """Add back stock for `qty_to_reverse` units of a TableOrderItem. No-op for custom/untracked items."""
     fi = item.food_item
@@ -706,7 +729,7 @@ def _get_locked_item(item_id):
     """Fetch a TableOrderItem with a row-level lock and all relations needed for cancel/reduce."""
     return (TableOrderItem.objects
             .select_for_update(of=('self',))
-            .select_related('batch__session__table', 'food_item')
+            .select_related('batch__session__table', 'batch__billing_order', 'food_item__food_type')
             .prefetch_related(
                 'food_item__recipe_ingredients',
                 'food_item__combo_components__component__recipe_ingredients',
@@ -725,6 +748,7 @@ def _do_cancel_item(item, restore_stock):
 
     if restore_stock:
         _reverse_item_stock(item, item.quantity)
+        _reverse_item_packaging(item, item.quantity)
 
     item.cancelled_by_kitchen = True
     item.cancelled_at         = timezone.now()
@@ -760,6 +784,7 @@ def _do_reduce_item(item, new_quantity, restore_stock):
 
     if restore_stock:
         _reverse_item_stock(item, qty_diff)
+        _reverse_item_packaging(item, qty_diff)
 
     item.quantity = new_quantity
     item.save(update_fields=['quantity'])
@@ -1174,6 +1199,7 @@ class TableSessionEndView(APIView):
         discount       = request.data.get('discount', 0)
         customer_name  = request.data.get('customer_name', '')
         customer_phone = request.data.get('customer_phone', '')
+        order_type     = request.data.get('order_type', 'DINE_IN')
 
         all_batch_items = []
         for batch in session.batches.prefetch_related('items__food_item').all():
@@ -1199,6 +1225,7 @@ class TableSessionEndView(APIView):
                     customer_name  = customer_name,
                     customer_phone = customer_phone,
                     payment_method = payment_method,
+                    order_type     = order_type,
                     discount       = discount,
                     tax_percent    = tax_percent,
                     table_session  = session,
@@ -1217,6 +1244,9 @@ class TableSessionEndView(APIView):
                 order.recalculate_totals()
                 order.status = Order.Status.PAID
                 order.save(update_fields=['status'])
+
+                from apps.billing.views import _deduct_packaging_for_order
+                _deduct_packaging_for_order(order)
 
                 session.discount = discount
 

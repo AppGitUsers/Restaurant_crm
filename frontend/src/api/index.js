@@ -73,6 +73,20 @@ export const inventoryAPI = {
   transactions: {
     list: (params) => client.get('/inventory/transactions/', { params }),
   },
+  packaging: {
+    list:     (params)    => client.get('/inventory/packaging/', { params }),
+    create:   (data)      => client.post('/inventory/packaging/', data),
+    update:   (id, data)  => client.patch(`/inventory/packaging/${id}/`, data),
+    delete:   (id)        => client.delete(`/inventory/packaging/${id}/`),
+    lowStock: ()          => client.get('/inventory/packaging/low_stock/'),
+    adjust:   (id, data)  => client.post(`/inventory/packaging/${id}/adjust/`, data),
+  },
+  foodTypeMappings: {
+    list:   (params)    => client.get('/inventory/food-type-mapping/', { params }),
+    create: (data)      => client.post('/inventory/food-type-mapping/', data),
+    update: (id, data)  => client.patch(`/inventory/food-type-mapping/${id}/`, data),
+    delete: (id)        => client.delete(`/inventory/food-type-mapping/${id}/`),
+  },
 }
 
 // ── Billing ───────────────────────────────────────────

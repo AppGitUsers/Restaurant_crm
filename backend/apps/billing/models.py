@@ -27,6 +27,10 @@ class Order(models.Model):
         CARD   = 'CARD',   'Card'
         OTHER  = 'OTHER',  'Other'
 
+    class OrderType(models.TextChoices):
+        DINE_IN = 'DINE_IN', 'Dine In'
+        PARCEL  = 'PARCEL',  'Parcel'
+
     order_number     = models.CharField(max_length=20, unique=True, blank=True)
     biller           = models.ForeignKey(CustomUser, on_delete=models.SET_NULL,
                                           null=True, related_name='orders_billed')
@@ -40,6 +44,8 @@ class Order(models.Model):
     tax_percent      = models.DecimalField(max_digits=5, decimal_places=2, default=5.00)
     tax_amount       = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total_amount     = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    order_type       = models.CharField(max_length=10, choices=OrderType.choices,
+                                         default=OrderType.DINE_IN)
     notes            = models.TextField(blank=True)
     share_token      = models.UUIDField(default=uuid.uuid4, unique=True)
     table_session    = models.OneToOneField(
