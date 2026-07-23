@@ -51,6 +51,10 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         model  = Order
         fields = ['customer_name', 'customer_phone', 'payment_method', 'order_type',
                   'discount', 'tax_percent', 'notes', 'items']
+        extra_kwargs = {
+            'customer_name':  {'required': False, 'allow_blank': True, 'default': ''},
+            'customer_phone': {'required': False, 'allow_blank': True, 'default': ''},
+        }
 
     def validate_customer_phone(self, value):
         if not value:

@@ -364,7 +364,7 @@ function CustomerFields({ customerName, customerPhone, setCustomer }) {
           inputMode="numeric"
           maxLength={15}
           className="input-sm pr-8"
-          placeholder="Phone * (required)"
+          placeholder="Phone (optional)"
           value={customerPhone}
           onChange={e => setCustomer(customerName, e.target.value.replace(/\D/g, '').slice(0, 15))}
         />
@@ -397,6 +397,7 @@ function CustomerFields({ customerName, customerPhone, setCustomer }) {
       <input
         className="input-sm"
         placeholder="Customer name (optional)"
+        maxLength={30}
         value={customerName}
         onChange={e => setCustomer(e.target.value, customerPhone)}
       />
@@ -822,8 +823,8 @@ export default function BillingPage() {
   const placeOrder = useMutation({
     mutationFn: async () => {
       const { items, customerName, customerPhone, paymentMethod, discount, taxPercent } = useCartStore.getState()
-      if (customerPhone.replace(/\D/g, '').length < 10) {
-        throw new Error('Phone number is required (10 digits)')
+      if (customerPhone.length > 0 && customerPhone.length < 10) {
+        throw new Error('Enter a valid 10-digit phone number, or leave it blank.')
       }
       const payload = {
         customer_name:  customerName,

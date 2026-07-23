@@ -607,7 +607,7 @@ function ItemRow({ item, cart, onInc, onDec, readOnly = false }) {
 
 // ─── Cart sheet ───────────────────────────────────────────────────────────────
 
-function CartSheet({ cart, setCart, onClose, onPlace, placing, gstRate }) {
+function CartSheet({ cart, setCart, onClose, onPlace, placing, gstRate, orderType, setOrderType, customerName, setCustomerName, customerPhone, setCustomerPhone }) {
   const [addonTarget, setAddonTarget] = useState(null)
 
   const updateQty = (cartId, newQty) => {
@@ -771,6 +771,49 @@ function CartSheet({ cart, setCart, onClose, onPlace, placing, gstRate }) {
           </div>
 
           <div className="px-4 pb-4 pt-2 border-t border-gray-100 flex-shrink-0 space-y-3">
+            {/* Order type toggle */}
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1.5">Order Type</p>
+              <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setOrderType('DINE_IN')}
+                  className={`flex-1 py-2.5 transition-colors ${orderType === 'DINE_IN' ? 'bg-primary-600 text-white' : 'text-gray-500'}`}
+                >
+                  🍽️ Dine In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOrderType('PARCEL')}
+                  className={`flex-1 py-2.5 border-l border-gray-200 transition-colors ${orderType === 'PARCEL' ? 'bg-primary-600 text-white' : 'text-gray-500'}`}
+                >
+                  📦 Parcel
+                </button>
+              </div>
+            </div>
+
+            {/* Optional customer info */}
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-gray-500">Your Details <span className="text-gray-400 font-normal">(optional)</span></p>
+              <input
+                type="tel"
+                inputMode="numeric"
+                maxLength={15}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+                placeholder="Phone number"
+                value={customerPhone}
+                onChange={e => setCustomerPhone(e.target.value.replace(/\D/g, '').slice(0, 15))}
+              />
+              <input
+                type="text"
+                maxLength={30}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+                placeholder="Your name"
+                value={customerName}
+                onChange={e => setCustomerName(e.target.value)}
+              />
+            </div>
+
             <div className="space-y-1 text-sm">
               <div className="flex justify-between text-gray-600"><span>Subtotal</span><span>{rupees(subtotal)}</span></div>
               <div className="flex justify-between text-gray-400 text-xs">
@@ -813,13 +856,16 @@ export default function QROrderPage() {
   const { token } = useParams()
   const { data, loading, error, refetch } = usePublicMenu(token)
 
-  const [cart,         setCart]         = useState([])
-  const [cartOpen,     setCartOpen]     = useState(false)
-  const [placing,      setPlacing]      = useState(false)
-  const [successInfo,  setSuccessInfo]  = useState(null)
-  const [stockErrors,  setStockErrors]  = useState([])
-  const [showCustomize, setCustomize]   = useState(false)
-  const [addonPrompt,  setAddonPrompt]  = useState(null)  // item to show addon prompt after adding
+  const [cart,          setCart]         = useState([])
+  const [cartOpen,      setCartOpen]     = useState(false)
+  const [placing,       setPlacing]      = useState(false)
+  const [successInfo,   setSuccessInfo]  = useState(null)
+  const [stockErrors,   setStockErrors]  = useState([])
+  const [showCustomize, setCustomize]    = useState(false)
+  const [addonPrompt,   setAddonPrompt]  = useState(null)
+  const [orderType,     setOrderType]    = useState('DINE_IN')
+  const [customerName,  setCustomerName] = useState('')
+  const [customerPhone, setCustomerPhone] = useState('')
 
   const [kitchenNotifications, setKitchenNotifications] = useState([])
 
@@ -938,6 +984,10 @@ export default function QROrderPage() {
   // ── Submit order ────────────────────────────────────────────────────────────
 
   const placeOrder = async () => {
+    if (customerPhone.length > 0 && customerPhone.length < 10) {
+      toast.error('Enter a valid 10-digit phone number, or leave it blank.')
+      return
+    }
     setPlacing(true)
     setStockErrors([])
     const items = cart.map(ci => {
@@ -959,7 +1009,13 @@ export default function QROrderPage() {
       }
     })
     try {
-      const res = await tablesAPI.public.order(token, { items, session_key: getKey(token) })
+      const res = await tablesAPI.public.order(token, {
+        items,
+        session_key:    getKey(token),
+        customer_name:  customerName,
+        customer_phone: customerPhone,
+        order_type:     orderType,
+      })
       if (res.data.session_key) saveKey(token, res.data.session_key)
       setSuccessInfo(res.data)
       setCart([])
@@ -1229,6 +1285,12 @@ export default function QROrderPage() {
           onPlace={placeOrder}
           placing={placing}
           gstRate={gstRate}
+          orderType={orderType}
+          setOrderType={setOrderType}
+          customerName={customerName}
+          setCustomerName={setCustomerName}
+          customerPhone={customerPhone}
+          setCustomerPhone={setCustomerPhone}
         />
       )}
 

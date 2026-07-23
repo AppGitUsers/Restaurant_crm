@@ -82,9 +82,12 @@ class OrderItemInputSerializer(serializers.Serializer):
 
 
 class OrderSubmitSerializer(serializers.Serializer):
-    items       = OrderItemInputSerializer(many=True, min_length=1, max_length=20)
-    notes       = serializers.CharField(max_length=1000, required=False, allow_blank=True, default='')
-    session_key = serializers.CharField(max_length=64,   required=False, allow_blank=True, default='')
+    items          = OrderItemInputSerializer(many=True, min_length=1, max_length=20)
+    notes          = serializers.CharField(max_length=1000, required=False, allow_blank=True, default='')
+    session_key    = serializers.CharField(max_length=64,   required=False, allow_blank=True, default='')
+    customer_name  = serializers.CharField(max_length=200,  required=False, allow_blank=True, default='')
+    customer_phone = serializers.CharField(max_length=20,   required=False, allow_blank=True, default='')
+    order_type     = serializers.ChoiceField(choices=['DINE_IN', 'PARCEL'], required=False, default='DINE_IN')
 
 
 class TableOrderItemSerializer(serializers.ModelSerializer):
@@ -143,6 +146,7 @@ class TableSessionSerializer(serializers.ModelSerializer):
         model  = TableSession
         fields = ['id', 'table', 'table_number', 'status',
                   'opened_at', 'closed_at', 'discount',
+                  'customer_name', 'customer_phone', 'order_type',
                   'subtotal', 'item_count', 'batches']
 
 

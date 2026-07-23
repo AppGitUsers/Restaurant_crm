@@ -165,6 +165,15 @@ function BillModal({ open, onClose, session, gstRate, onBill, title = 'Collect P
   const [name,      setName]      = useState('')
   const [orderType, setOrderType] = useState('DINE_IN')
 
+  // Pre-fill from session when modal opens
+  useEffect(() => {
+    if (open && session) {
+      setPhone(session.customer_phone || '')
+      setName(session.customer_name || '')
+      setOrderType(session.order_type || 'DINE_IN')
+    }
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!session) return null
 
   const subtotal = parseFloat(session.subtotal)
@@ -200,8 +209,8 @@ function BillModal({ open, onClose, session, gstRate, onBill, title = 'Collect P
           <button onClick={onClose} className="btn-ghost">Cancel</button>
           <button
             onClick={() => {
-              if (phone.replace(/\D/g, '').length < 10) {
-                toast.error('Phone number is required (10 digits)')
+              if (phone.length > 0 && phone.replace(/\D/g, '').length < 10) {
+                toast.error('Enter a valid 10-digit phone number, or leave it blank.')
                 return
               }
               onBill({ payment_method: method, customer_name: name, customer_phone: phone, order_type: orderType })
@@ -258,7 +267,7 @@ function BillModal({ open, onClose, session, gstRate, onBill, title = 'Collect P
         {/* Phone first — triggers lookup */}
         <div className="space-y-2">
           <div className="relative">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Phone <span className="text-red-500">*</span></label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Phone <span className="text-gray-400 font-normal">(optional)</span></label>
             <input
               type="tel"
               inputMode="numeric"
@@ -297,6 +306,7 @@ function BillModal({ open, onClose, session, gstRate, onBill, title = 'Collect P
             <label className="block text-xs font-medium text-gray-600 mb-1">Customer Name (optional)</label>
             <input
               className="input"
+              maxLength={30}
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="Walk-in"

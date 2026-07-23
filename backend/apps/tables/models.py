@@ -25,12 +25,15 @@ class TableSession(models.Model):
         CLOSED = 'CLOSED', 'Closed'   # ended by biller without billing
         BILLED = 'BILLED', 'Billed'
 
-    table       = models.ForeignKey(Table, on_delete=models.PROTECT, related_name='sessions')
-    status      = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
-    session_key = models.CharField(max_length=64, blank=True, default='')
-    opened_at   = models.DateTimeField(auto_now_add=True)
-    closed_at   = models.DateTimeField(null=True, blank=True)
-    discount    = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    table          = models.ForeignKey(Table, on_delete=models.PROTECT, related_name='sessions')
+    status         = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
+    session_key    = models.CharField(max_length=64, blank=True, default='')
+    opened_at      = models.DateTimeField(auto_now_add=True)
+    closed_at      = models.DateTimeField(null=True, blank=True)
+    discount       = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    customer_name  = models.CharField(max_length=200, blank=True, default='')
+    customer_phone = models.CharField(max_length=20, blank=True, default='')
+    order_type     = models.CharField(max_length=10, default='DINE_IN')
 
     class Meta:
         ordering = ['-opened_at']
