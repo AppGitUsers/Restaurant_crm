@@ -46,11 +46,11 @@ def push_stock_on_receive(sender, instance, **kwargs):
     if update_fields is not None and 'stock_updated' not in update_fields:
         return
 
-    items = list(instance.items.select_related('ingredient', 'packaging_item').all())
+    items = list(instance.items.select_related('ingredient', 'packaging_item', 'raw_material').all())
     if not items:
         return
 
-    from .models import PackagingItem
+    from .models import PackagingItem, RawMaterial
 
     for item in items:
         stock_qty = item.quantity * item.qty_per_package
@@ -77,6 +77,14 @@ def push_stock_on_receive(sender, instance, **kwargs):
             )
             logger.info("PackagingItem restocked via invoice: invoice=%s item=%s qty_added=%d",
                         instance.invoice_number, item.packaging_item.name, int(stock_qty))
+
+        elif item.raw_material_id:
+            RawMaterial.objects.filter(pk=item.raw_material_id).update(
+                current_quantity=F('current_quantity') + stock_qty
+            )
+            logger.info("RawMaterial restocked via invoice: invoice=%s item=%s qty_added=%s unit=%s",
+                        instance.invoice_number, item.raw_material.name,
+                        stock_qty, item.raw_material.unit)
 
     # Two-pass recalc: components first, then combos
     try:

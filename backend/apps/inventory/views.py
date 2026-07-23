@@ -6,11 +6,11 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from apps.accounts.permissions import IsAdmin, IsAdminOrBiller
 from .models import (Vendor, Stock, VendorInvoice, InvoicePayment, StockTransaction,
-                     PackagingItem, FoodTypePackaging)
+                     PackagingItem, FoodTypePackaging, RawMaterial)
 from .serializers import (VendorSerializer, StockSerializer, VendorInvoiceSerializer,
                            VendorInvoiceWriteSerializer, InvoicePaymentSerializer,
                            StockTransactionSerializer, PackagingItemSerializer,
-                           FoodTypePackagingSerializer)
+                           FoodTypePackagingSerializer, RawMaterialSerializer)
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,8 @@ class StockViewSet(viewsets.ModelViewSet):
 class VendorInvoiceViewSet(viewsets.ModelViewSet):
     queryset = (VendorInvoice.objects
                 .select_related('vendor')
-                .prefetch_related('items__ingredient', 'items__packaging_item', 'payments')
+                .prefetch_related('items__ingredient', 'items__packaging_item',
+                                  'items__raw_material', 'payments')
                 .all())
     permission_classes = [IsAdmin]
     filterset_fields   = ['status', 'vendor', 'stock_updated']
@@ -141,7 +142,8 @@ class VendorInvoiceViewSet(viewsets.ModelViewSet):
         # Re-fetch invoice fresh to pick up signal-updated paid_amount/status and new payment row
         invoice = (VendorInvoice.objects
                    .select_related('vendor')
-                   .prefetch_related('items__ingredient', 'payments')
+                   .prefetch_related('items__ingredient', 'items__packaging_item',
+                                     'items__raw_material', 'payments')
                    .get(pk=invoice.pk))
         return Response(VendorInvoiceSerializer(invoice).data, status=201)
 
@@ -203,6 +205,55 @@ class PackagingItemViewSet(viewsets.ModelViewSet):
         logger.info("PackagingItem adjusted: admin=%s item=%s old_qty=%d new_qty=%d",
                     request.user, item.name, old_qty, quantity)
         return Response(PackagingItemSerializer(item).data)
+
+
+class RawMaterialViewSet(viewsets.ModelViewSet):
+    queryset           = RawMaterial.objects.all()
+    serializer_class   = RawMaterialSerializer
+    permission_classes = [IsAdmin]
+    search_fields      = ['name']
+    ordering_fields    = ['name', 'current_quantity']
+
+    def perform_create(self, serializer):
+        item = serializer.save()
+        logger.info("RawMaterial created: admin=%s name=%s unit=%s threshold=%s",
+                    self.request.user, item.name, item.unit, item.low_stock_threshold)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        item = serializer.instance
+        logger.info("RawMaterial updated: admin=%s name=%s fields=%s",
+                    self.request.user, item.name, list(self.request.data.keys()))
+
+    def perform_destroy(self, instance):
+        logger.info("RawMaterial deleted: admin=%s name=%s qty_at_delete=%s",
+                    self.request.user, instance.name, instance.current_quantity)
+        instance.delete()
+
+    @action(detail=False, methods=['get'])
+    def low_stock(self, request):
+        low = [r for r in self.get_queryset() if r.is_low]
+        if low:
+            logger.warning("RawMaterial low-stock fetched: user=%s items=%s",
+                           request.user, [r.name for r in low])
+        return Response(RawMaterialSerializer(low, many=True).data)
+
+    @action(detail=True, methods=['post'])
+    def adjust(self, request, pk=None):
+        item     = self.get_object()
+        quantity = request.data.get('quantity')
+        if quantity is None:
+            return Response({'error': 'quantity is required'}, status=400)
+        try:
+            quantity = Decimal(str(quantity))
+        except (InvalidOperation, ValueError):
+            return Response({'error': 'quantity must be a valid number'}, status=400)
+        old_qty = item.current_quantity
+        item.current_quantity = quantity
+        item.save(update_fields=['current_quantity'])
+        logger.info("RawMaterial adjusted: admin=%s item=%s old_qty=%s new_qty=%s unit=%s",
+                    request.user, item.name, old_qty, quantity, item.unit)
+        return Response(RawMaterialSerializer(item).data)
 
 
 class FoodTypePackagingViewSet(viewsets.ModelViewSet):

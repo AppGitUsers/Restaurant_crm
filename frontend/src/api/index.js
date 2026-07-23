@@ -87,6 +87,14 @@ export const inventoryAPI = {
     update: (id, data)  => client.patch(`/inventory/food-type-mapping/${id}/`, data),
     delete: (id)        => client.delete(`/inventory/food-type-mapping/${id}/`),
   },
+  rawMaterials: {
+    list:     (params)    => client.get('/inventory/raw-materials/', { params }),
+    create:   (data)      => client.post('/inventory/raw-materials/', data),
+    update:   (id, data)  => client.patch(`/inventory/raw-materials/${id}/`, data),
+    delete:   (id)        => client.delete(`/inventory/raw-materials/${id}/`),
+    lowStock: ()          => client.get('/inventory/raw-materials/low_stock/'),
+    adjust:   (id, data)  => client.post(`/inventory/raw-materials/${id}/adjust/`, data),
+  },
 }
 
 // ── Billing ───────────────────────────────────────────

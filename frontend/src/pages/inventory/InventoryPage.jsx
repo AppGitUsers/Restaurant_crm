@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { inventoryAPI, menuAPI } from '@/api'
 import { PageLoader, Modal, SearchBar, StatusBadge, ConfirmDialog, Field, Empty } from '@/components/ui'
 import toast from 'react-hot-toast'
-import { Plus, Edit2, Trash2, Package, Truck, FileText, CreditCard, AlertTriangle, Box, Tag } from 'lucide-react'
+import { Plus, Edit2, Trash2, Package, Truck, FileText, CreditCard, AlertTriangle, Box, Tag, FlaskConical } from 'lucide-react'
 
 // ── Searchable ingredient combobox ────────────────────
 function IngredientSelect({ ingredients, value, onChange }) {
@@ -75,6 +75,53 @@ function PackagingSelect({ items, value, onChange }) {
       <input
         className="input w-full"
         placeholder="Search packaging…"
+        value={open ? search : (selected ? `${selected.name} (${selected.unit})` : '')}
+        onFocus={() => { setOpen(true); setSearch('') }}
+        onChange={e => setSearch(e.target.value)}
+        onKeyDown={e => e.key === 'Escape' && setOpen(false)}
+      />
+      {open && (
+        <div className="absolute left-0 right-0 z-[100] mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-44 overflow-y-auto">
+          {filtered.length === 0
+            ? <p className="px-3 py-2 text-sm text-gray-400">No results</p>
+            : filtered.map(i => (
+              <button key={i.id} type="button"
+                className="w-full text-left px-3 py-2 text-sm hover:bg-primary-50 flex justify-between items-center"
+                onMouseDown={() => { onChange(String(i.id)); setOpen(false); setSearch('') }}>
+                <span className="font-medium">{i.name}</span>
+                <span className="text-gray-400 text-xs ml-2">{i.unit}</span>
+              </button>
+            ))
+          }
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Searchable raw-material combobox ─────────────────
+function RawMaterialSelect({ items, value, onChange }) {
+  const [search, setSearch] = useState('')
+  const [open, setOpen]     = useState(false)
+  const ref                 = useRef(null)
+
+  const list     = items || []
+  const selected = list.find(i => String(i.id) === String(value))
+  const filtered = search
+    ? list.filter(i => i.name.toLowerCase().includes(search.toLowerCase()))
+    : list
+
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        className="input w-full"
+        placeholder="Search raw material…"
         value={open ? search : (selected ? `${selected.name} (${selected.unit})` : '')}
         onFocus={() => { setOpen(true); setSearch('') }}
         onChange={e => setSearch(e.target.value)}
@@ -272,9 +319,10 @@ function InvoiceTab() {
   const [payModal, setPayModal]   = useState(null)
   const [payForm, setPayForm]     = useState({ amount: '', payment_date: '', payment_method: 'Cash', notes: '' })
 
-  const { data: vendors }      = useQuery({ queryKey: ['vendors'], queryFn: () => inventoryAPI.vendors.list().then(r => r.data.results || r.data) })
-  const { data: ingredients }  = useQuery({ queryKey: ['ingredients'], queryFn: () => menuAPI.ingredients.list().then(r => r.data.results || r.data) })
-  const { data: packagingList }= useQuery({ queryKey: ['packaging'], queryFn: () => inventoryAPI.packaging.list().then(r => r.data.results || r.data) })
+  const { data: vendors }         = useQuery({ queryKey: ['vendors'], queryFn: () => inventoryAPI.vendors.list().then(r => r.data.results || r.data) })
+  const { data: ingredients }     = useQuery({ queryKey: ['ingredients'], queryFn: () => menuAPI.ingredients.list().then(r => r.data.results || r.data) })
+  const { data: packagingList }   = useQuery({ queryKey: ['packaging'], queryFn: () => inventoryAPI.packaging.list().then(r => r.data.results || r.data) })
+  const { data: rawMaterialsList }= useQuery({ queryKey: ['raw-materials'], queryFn: () => inventoryAPI.rawMaterials.list().then(r => r.data.results || r.data) })
 
   const emptyForm = {
     vendor: '', invoice_number: '', invoice_date: today,
@@ -288,7 +336,7 @@ function InvoiceTab() {
   })
 
   const save         = useMutation({ mutationFn: d => inventoryAPI.invoices.create(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); setModal(false); toast.success('Invoice created') } })
-  const markReceived = useMutation({ mutationFn: id => inventoryAPI.invoices.markReceived(id), onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); qc.invalidateQueries({ queryKey: ['stock'] }); qc.invalidateQueries({ queryKey: ['low-stock'] }); toast.success('Stock updated from invoice') } })
+  const markReceived = useMutation({ mutationFn: id => inventoryAPI.invoices.markReceived(id), onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); qc.invalidateQueries({ queryKey: ['stock'] }); qc.invalidateQueries({ queryKey: ['low-stock'] }); qc.invalidateQueries({ queryKey: ['packaging'] }); qc.invalidateQueries({ queryKey: ['raw-materials'] }); toast.success('Stock updated from invoice') } })
   const addPayment   = useMutation({
     mutationFn: ({ id, data }) => inventoryAPI.invoices.addPayment(id, data),
     onSuccess: (response) => {
@@ -307,7 +355,7 @@ function InvoiceTab() {
     items.reduce((s, r) => s + (parseFloat(r.quantity) || 0) * (parseFloat(r.unit_price) || 0), 0)
 
   const addInvItem = () => {
-    setForm(f => ({ ...f, items: [...f.items, { item_type: 'ingredient', ingredient: '', packaging_item: '', quantity: '', qty_per_package: '1', unit_price: '' }] }))
+    setForm(f => ({ ...f, items: [...f.items, { item_type: 'ingredient', ingredient: '', packaging_item: '', raw_material: '', quantity: '', qty_per_package: '1', unit_price: '' }] }))
   }
 
   const removeInvItem = i => {
@@ -341,8 +389,9 @@ function InvoiceTab() {
       invoice_number: form.invoice_number || null,
       due_date: form.due_date || null,
       items: form.items.map(row => ({
-        ingredient:     row.item_type === 'ingredient' ? (row.ingredient || null) : null,
-        packaging_item: row.item_type === 'packaging'  ? (row.packaging_item || null) : null,
+        ingredient:      row.item_type === 'ingredient'   ? (row.ingredient    || null) : null,
+        packaging_item:  row.item_type === 'packaging'    ? (row.packaging_item || null) : null,
+        raw_material:    row.item_type === 'raw_material' ? (row.raw_material   || null) : null,
         quantity:        row.quantity,
         qty_per_package: row.qty_per_package,
         unit_price:      row.unit_price,
@@ -481,14 +530,18 @@ function InvoiceTab() {
                         onChange={e => updateInvItem(i, 'item_type', e.target.value)}>
                         <option value="ingredient">Ingredient</option>
                         <option value="packaging">Packaging</option>
+                        <option value="raw_material">Raw Material</option>
                       </select>
                     </td>
                     <td className="px-2 py-1.5">
                       {row.item_type === 'ingredient'
                         ? <IngredientSelect ingredients={ingredients} value={row.ingredient}
                             onChange={v => updateInvItem(i, 'ingredient', v)} />
-                        : <PackagingSelect items={packagingList} value={row.packaging_item}
-                            onChange={v => updateInvItem(i, 'packaging_item', v)} />
+                        : row.item_type === 'packaging'
+                          ? <PackagingSelect items={packagingList} value={row.packaging_item}
+                              onChange={v => updateInvItem(i, 'packaging_item', v)} />
+                          : <RawMaterialSelect items={rawMaterialsList} value={row.raw_material}
+                              onChange={v => updateInvItem(i, 'raw_material', v)} />
                       }
                     </td>
                     <td className="px-1 py-1.5">
@@ -569,8 +622,15 @@ function InvoiceTab() {
                   <tbody>
                     {detailModal.items.map((item, i) => (
                       <tr key={i}>
-                        <td>{item.ingredient_name || item.packaging_item_name || '—'}</td>
-                        <td><span className={`badge ${item.item_type === 'packaging' ? 'badge-gray' : 'badge-green'}`}>{item.item_type === 'packaging' ? 'Packaging' : 'Ingredient'}</span></td>
+                        <td>{item.ingredient_name || item.packaging_item_name || item.raw_material_name || '—'}</td>
+                        <td>
+                          <span className={`badge ${
+                            item.item_type === 'packaging'    ? 'badge-gray'   :
+                            item.item_type === 'raw_material' ? 'badge-yellow' : 'badge-green'
+                          }`}>
+                            {item.item_type === 'packaging' ? 'Packaging' : item.item_type === 'raw_material' ? 'Raw Material' : 'Ingredient'}
+                          </span>
+                        </td>
                         <td>{item.quantity}</td>
                         <td>{item.qty_per_package} {item.unit}</td>
                         <td className="font-medium text-primary-600">
@@ -835,13 +895,149 @@ function PackagingTab() {
   )
 }
 
+// ── Raw Materials Tab ─────────────────────────────────
+function RawMaterialTab() {
+  const qc = useQueryClient()
+  const [modal, setModal]           = useState(false)
+  const [sel, setSel]               = useState(null)
+  const [del, setDel]               = useState(null)
+  const [adjustModal, setAdjustModal] = useState(null)
+  const [adjQty, setAdjQty]         = useState('')
+  const [form, setForm]             = useState({ name: '', unit: 'kg', low_stock_threshold: '0', notes: '' })
+
+  const { data: items, isLoading } = useQuery({
+    queryKey: ['raw-materials'],
+    queryFn: () => inventoryAPI.rawMaterials.list().then(r => r.data.results || r.data),
+  })
+
+  const save   = useMutation({ mutationFn: d => sel ? inventoryAPI.rawMaterials.update(sel.id, d) : inventoryAPI.rawMaterials.create(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['raw-materials'] }); setModal(false); toast.success('Saved!') } })
+  const remove = useMutation({ mutationFn: id => inventoryAPI.rawMaterials.delete(id), onSuccess: () => { qc.invalidateQueries({ queryKey: ['raw-materials'] }); setDel(null); toast.success('Deleted') } })
+  const adjust = useMutation({
+    mutationFn: ({ id, quantity }) => inventoryAPI.rawMaterials.adjust(id, { quantity }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['raw-materials'] })
+      setAdjustModal(null)
+      toast.success('Stock adjusted')
+    },
+    onError: () => toast.error('Failed to adjust stock'),
+  })
+
+  const openCreate = () => { setSel(null); setForm({ name: '', unit: 'kg', low_stock_threshold: '0', notes: '' }); setModal(true) }
+  const openEdit   = r => { setSel(r); setForm({ name: r.name, unit: r.unit, low_stock_threshold: String(r.low_stock_threshold), notes: r.notes || '' }); setModal(true) }
+  const openAdjust = r => { setAdjustModal(r); setAdjQty(String(r.current_quantity)) }
+
+  const list     = items || []
+  const lowCount = list.filter(r => r.is_low).length
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div>
+            <h3 className="font-semibold text-gray-800">Raw Materials</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Bulk stock updated via vendor invoices or manual adjustment. No auto-deduction.</p>
+          </div>
+          {lowCount > 0 && (
+            <div className="flex items-center gap-1.5 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1">
+              <AlertTriangle size={13} className="text-red-500" />
+              <span className="text-xs text-red-600 font-medium">{lowCount} low</span>
+            </div>
+          )}
+        </div>
+        <button onClick={openCreate} className="btn-primary"><Plus size={15} />Add Material</button>
+      </div>
+
+      {isLoading && <div className="text-center py-8 text-gray-400">Loading…</div>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        {list.map(r => (
+          <div key={r.id} className={`card flex flex-col gap-3 ${r.is_low ? 'border-red-200' : ''}`}>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-semibold text-gray-800">{r.name}</p>
+                <p className="text-xs text-gray-400">{r.unit}</p>
+              </div>
+              <span className={r.is_low ? 'badge-red flex-shrink-0' : 'badge-green flex-shrink-0'}>{r.is_low ? 'Low' : 'OK'}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`text-2xl font-bold ${r.is_low ? 'text-red-600' : 'text-gray-800'}`}>
+                {parseFloat(r.current_quantity).toFixed(2)}
+              </span>
+              <span className="text-xs text-gray-400">/ min {parseFloat(r.low_stock_threshold).toFixed(2)} {r.unit}</span>
+            </div>
+            {r.notes && <p className="text-xs text-gray-400 italic truncate">{r.notes}</p>}
+            <div className="flex gap-1 border-t border-gray-50 pt-2">
+              <button onClick={() => openAdjust(r)} className="btn-ghost py-1 text-xs flex-1"><Edit2 size={12} />Adjust Stock</button>
+              <button onClick={() => openEdit(r)} className="btn-ghost py-1 text-xs px-2" title="Edit"><Edit2 size={12} /></button>
+              <button onClick={() => setDel(r)} className="btn-ghost py-1 text-xs text-red-400"><Trash2 size={12} /></button>
+            </div>
+          </div>
+        ))}
+        {!isLoading && list.length === 0 && (
+          <div className="col-span-full"><Empty message="No raw materials — add sugar, rice, oil, etc." /></div>
+        )}
+      </div>
+
+      {/* Adjust Modal */}
+      <Modal open={!!adjustModal} onClose={() => setAdjustModal(null)} title={`Adjust Stock — ${adjustModal?.name}`}
+        footer={
+          <>
+            <button onClick={() => setAdjustModal(null)} className="btn-ghost">Cancel</button>
+            <button
+              onClick={() => adjust.mutate({ id: adjustModal.id, quantity: adjQty })}
+              disabled={adjust.isPending || adjQty === ''}
+              className="btn-primary"
+            >Update</button>
+          </>
+        }>
+        <Field label={`New Quantity (${adjustModal?.unit})`}>
+          <input
+            type="number"
+            min="0"
+            step="0.001"
+            className="input"
+            value={adjQty}
+            onChange={e => setAdjQty(e.target.value)}
+            autoFocus
+          />
+        </Field>
+        {adjustModal && (
+          <p className="text-xs text-gray-400 mt-1">
+            Current: <span className="font-semibold text-gray-600">{parseFloat(adjustModal.current_quantity).toFixed(3)} {adjustModal.unit}</span>
+            {' · '}Threshold: <span className="font-semibold text-gray-600">{parseFloat(adjustModal.low_stock_threshold).toFixed(3)} {adjustModal.unit}</span>
+          </p>
+        )}
+      </Modal>
+
+      {/* Create/Edit Modal */}
+      <Modal open={modal} onClose={() => setModal(false)} title={sel ? 'Edit Raw Material' : 'Add Raw Material'}
+        footer={<><button onClick={() => setModal(false)} className="btn-ghost">Cancel</button><button onClick={() => save.mutate(form)} disabled={save.isPending} className="btn-primary">Save</button></>}>
+        <Field label="Name" required>
+          <input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Sugar, Rice, Palm Oil" />
+        </Field>
+        <Field label="Unit">
+          <input className="input" value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} placeholder="kg, L, pcs…" />
+        </Field>
+        <Field label="Low Stock Threshold">
+          <input type="number" min="0" step="0.001" className="input" value={form.low_stock_threshold} onChange={e => setForm({ ...form, low_stock_threshold: e.target.value })} />
+        </Field>
+        <Field label="Notes">
+          <textarea className="input" rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Optional notes about this material" />
+        </Field>
+      </Modal>
+
+      <ConfirmDialog open={!!del} onClose={() => setDel(null)} onConfirm={() => remove.mutate(del?.id)} title="Delete Raw Material" message={`Delete "${del?.name}"? This cannot be undone.`} danger />
+    </div>
+  )
+}
+
 export default function InventoryPage() {
   const [tab, setTab] = useState('stock')
   const tabs = [
-    { id: 'stock',     label: 'Stock',     icon: <Package size={15} /> },
-    { id: 'packaging', label: 'Packaging', icon: <Box size={15} /> },
-    { id: 'invoices',  label: 'Invoices',  icon: <FileText size={15} /> },
-    { id: 'vendors',   label: 'Vendors',   icon: <Truck size={15} /> },
+    { id: 'stock',        label: 'Stock',         icon: <Package size={15} /> },
+    { id: 'packaging',    label: 'Packaging',     icon: <Box size={15} /> },
+    { id: 'raw-materials', label: 'Raw Materials', icon: <FlaskConical size={15} /> },
+    { id: 'invoices',     label: 'Invoices',      icon: <FileText size={15} /> },
+    { id: 'vendors',      label: 'Vendors',       icon: <Truck size={15} /> },
   ]
 
   return (
@@ -863,10 +1059,11 @@ export default function InventoryPage() {
           ))}
         </div>
       </div>
-      {tab === 'stock'     && <StockTab />}
-      {tab === 'packaging' && <PackagingTab />}
-      {tab === 'invoices'  && <InvoiceTab />}
-      {tab === 'vendors'   && <VendorTab />}
+      {tab === 'stock'         && <StockTab />}
+      {tab === 'packaging'     && <PackagingTab />}
+      {tab === 'raw-materials' && <RawMaterialTab />}
+      {tab === 'invoices'      && <InvoiceTab />}
+      {tab === 'vendors'       && <VendorTab />}
     </div>
   )
 }

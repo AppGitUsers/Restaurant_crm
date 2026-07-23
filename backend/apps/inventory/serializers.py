@@ -1,7 +1,7 @@
 import re
 from rest_framework import serializers
 from .models import (Vendor, Stock, VendorInvoice, InvoiceItem, InvoicePayment,
-                     StockTransaction, PackagingItem, FoodTypePackaging)
+                     StockTransaction, PackagingItem, FoodTypePackaging, RawMaterial)
 
 
 class VendorSerializer(serializers.ModelSerializer):
@@ -55,9 +55,19 @@ class FoodTypePackagingSerializer(serializers.ModelSerializer):
                   'packaging_unit', 'order_type', 'qty_per_serving']
 
 
+class RawMaterialSerializer(serializers.ModelSerializer):
+    is_low = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model  = RawMaterial
+        fields = ['id', 'name', 'unit', 'current_quantity', 'low_stock_threshold',
+                  'is_low', 'notes', 'created_at', 'updated_at']
+
+
 class InvoiceItemSerializer(serializers.ModelSerializer):
     ingredient_name      = serializers.SerializerMethodField()
     packaging_item_name  = serializers.SerializerMethodField()
+    raw_material_name    = serializers.SerializerMethodField()
     unit                 = serializers.SerializerMethodField()
     item_type            = serializers.SerializerMethodField()
     line_total           = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
@@ -65,8 +75,8 @@ class InvoiceItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = InvoiceItem
-        fields = ['id', 'ingredient', 'packaging_item', 'item_type',
-                  'ingredient_name', 'packaging_item_name', 'unit',
+        fields = ['id', 'ingredient', 'packaging_item', 'raw_material', 'item_type',
+                  'ingredient_name', 'packaging_item_name', 'raw_material_name', 'unit',
                   'quantity', 'qty_per_package', 'unit_price', 'line_total', 'stock_quantity']
 
     def get_item_type(self, obj):
@@ -74,35 +84,40 @@ class InvoiceItemSerializer(serializers.ModelSerializer):
             return 'ingredient'
         if obj.packaging_item_id:
             return 'packaging'
+        if obj.raw_material_id:
+            return 'raw_material'
         return None
 
     def get_ingredient_name(self, obj):
-        if obj.ingredient_id:
-            return obj.ingredient.name
-        return None
+        return obj.ingredient.name if obj.ingredient_id else None
 
     def get_packaging_item_name(self, obj):
-        if obj.packaging_item_id:
-            return obj.packaging_item.name
-        return None
+        return obj.packaging_item.name if obj.packaging_item_id else None
+
+    def get_raw_material_name(self, obj):
+        return obj.raw_material.name if obj.raw_material_id else None
 
     def get_unit(self, obj):
         if obj.ingredient_id:
             return obj.ingredient.unit
         if obj.packaging_item_id:
             return obj.packaging_item.unit
+        if obj.raw_material_id:
+            return obj.raw_material.unit
         return None
 
     def validate(self, data):
         ingredient     = data.get('ingredient')
         packaging_item = data.get('packaging_item')
-        if not ingredient and not packaging_item:
+        raw_material   = data.get('raw_material')
+        set_count = sum(bool(x) for x in [ingredient, packaging_item, raw_material])
+        if set_count == 0:
             raise serializers.ValidationError(
-                'Each invoice line must have either an ingredient or a packaging item.'
+                'Each invoice line must reference an ingredient, packaging item, or raw material.'
             )
-        if ingredient and packaging_item:
+        if set_count > 1:
             raise serializers.ValidationError(
-                'Each invoice line can only be an ingredient or a packaging item, not both.'
+                'Each invoice line can only reference one item type.'
             )
         return data
 

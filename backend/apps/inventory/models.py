@@ -118,11 +118,34 @@ class FoodTypePackaging(models.Model):
                 f"×{self.qty_per_serving} ({self.order_type})")
 
 
+class RawMaterial(models.Model):
+    name                = models.CharField(max_length=200, unique=True)
+    unit                = models.CharField(max_length=50, default='kg',
+                                           help_text='e.g. kg, L, pcs')
+    current_quantity    = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    low_stock_threshold = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    notes               = models.TextField(blank=True)
+    created_at          = models.DateTimeField(auto_now_add=True)
+    updated_at          = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.name} ({self.current_quantity} {self.unit})"
+
+    @property
+    def is_low(self):
+        return self.current_quantity <= self.low_stock_threshold
+
+
 class InvoiceItem(models.Model):
     invoice         = models.ForeignKey(VendorInvoice, on_delete=models.CASCADE, related_name='items')
     ingredient      = models.ForeignKey(Ingredient, on_delete=models.PROTECT,
                                         null=True, blank=True)
     packaging_item  = models.ForeignKey(PackagingItem, on_delete=models.PROTECT,
+                                        null=True, blank=True)
+    raw_material    = models.ForeignKey(RawMaterial, on_delete=models.PROTECT,
                                         null=True, blank=True)
     quantity        = models.DecimalField(max_digits=12, decimal_places=3,
                                           help_text='Number of packages purchased')
@@ -144,6 +167,8 @@ class InvoiceItem(models.Model):
             return f"{self.ingredient.name} × {self.quantity}"
         if self.packaging_item_id:
             return f"{self.packaging_item.name} × {self.quantity}"
+        if self.raw_material_id:
+            return f"{self.raw_material.name} × {self.quantity}"
         return f"? × {self.quantity}"
 
 
