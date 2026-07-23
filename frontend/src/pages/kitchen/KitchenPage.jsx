@@ -2,20 +2,34 @@ import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { tablesAPI } from '@/api'
 import { parseISO, format } from 'date-fns'
+import { Modal, Field, Empty } from '@/components/ui'
 import {
   ChefHat, CheckCheck, Loader2, UtensilsCrossed,
   Timer, Sparkles, Wand2, ClipboardCheck, Flame,
-  X, Minus, Trash2, Lock,
+  Minus, Trash2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-const STATUS_META = {
-  PENDING:   { label: 'New Order', bg: 'bg-amber-500', border: 'border-amber-400', text: 'text-amber-300' },
-  PREPARING: { label: 'Preparing', bg: 'bg-blue-600',  border: 'border-blue-400',  text: 'text-blue-300'  },
+// PENDING = amber, PREPARING = blue
+const STATUS = {
+  PENDING:   {
+    header:  'bg-green-500',
+    itemQty: 'bg-green-600 text-white',
+    badge:   'bg-green-100 text-green-700 border border-green-200',
+    btn:     'bg-green-600 hover:bg-green-700 text-white',
+    label:   'New Order',
+  },
+  PREPARING: {
+    header:  'bg-blue-500',
+    itemQty: 'bg-blue-500 text-white',
+    badge:   'bg-blue-100 text-blue-700 border border-blue-200',
+    btn:     'bg-green-600 hover:bg-green-700 text-white',
+    label:   'Preparing',
+  },
 }
 
 // ── Live elapsed timer ────────────────────────────────────────────────────────
-function LiveTimer({ placedAt }) {
+function LiveTimer({ placedAt, invert = false }) {
   const start = parseISO(placedAt).getTime()
   const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - start) / 1000))
 
@@ -28,346 +42,292 @@ function LiveTimer({ placedAt }) {
   const secs    = elapsed % 60
   const overdue = elapsed >= 180
 
+  if (invert) {
+    return (
+      <span className={`inline-flex items-center gap-1.5 font-mono font-bold text-sm px-2.5 py-1 rounded-full
+        ${overdue
+          ? 'bg-red-500 text-white animate-pulse'
+          : 'bg-white/30 text-white'}`}>
+        <Timer size={13} />
+        {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
+      </span>
+    )
+  }
+
   return (
-    <span className={`inline-flex items-center gap-1 font-mono font-bold text-sm px-2.5 py-1 rounded-lg
-      ${overdue ? 'bg-red-500/25 text-red-400 animate-pulse' : 'bg-green-500/20 text-green-400'}`}>
-      <Timer size={13} />
+    <span className={`inline-flex items-center gap-1 font-mono font-semibold text-xs px-2 py-0.5 rounded-full
+      ${overdue ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-black/10 text-white/90'}`}>
+      <Timer size={10} />
       {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
     </span>
   )
 }
 
-// ── Parse add-ons / components out of the notes string ───────────────────────
+// ── Parse add-ons / components ────────────────────────────────────────────────
 function parseNotes(notes) {
   if (!notes) return { components: null, addons: null }
   let text = notes
-
   let components = null
   const customMatch = text.match(/^Custom:\s*([^|]+)/)
   if (customMatch) {
     components = customMatch[1].trim().split(' + ').map(s => s.trim()).filter(Boolean)
     text = text.slice(customMatch[0].length).replace(/^\s*\|\s*/, '').trim()
   }
-
   let addons = null
   const addonMatch = text.match(/Add-ons:\s*(.+)/i)
-  if (addonMatch) {
-    addons = addonMatch[1].split(',').map(s => s.trim()).filter(Boolean)
-  }
-
+  if (addonMatch) addons = addonMatch[1].split(',').map(s => s.trim()).filter(Boolean)
   return { components, addons }
 }
 
-// ── Cancel item modal (with restore-stock toggle + PIN) ───────────────────────
-function CancelItemModal({ item, onConfirm, onClose, loading }) {
-  const [pin,          setPin]          = useState('')
-  const [restoreStock, setRestoreStock] = useState(false)
-  const inputRef                        = useRef(null)
-
-  useEffect(() => { inputRef.current?.focus() }, [])
-
-  const submit = () => { if (!loading) onConfirm(pin, restoreStock) }
-
+// ── Stock-restore toggle ──────────────────────────────────────────────────────
+function StockToggle({ value, onChange, label, hint }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Trash2 size={16} className="text-red-400" />
-            <h3 className="font-bold text-white text-lg">Cancel Item</h3>
-          </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
+    <div className="mb-4">
+      <button
+        type="button"
+        onClick={() => onChange(!value)}
+        className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all
+          ${value ? 'border-green-400 bg-green-50' : 'border-gray-200 bg-gray-50'}`}
+      >
+        <span className={`text-sm font-medium ${value ? 'text-green-700' : 'text-gray-600'}`}>{label}</span>
+        <div className={`w-11 h-6 rounded-full relative transition-colors flex-shrink-0 ${value ? 'bg-green-500' : 'bg-gray-300'}`}>
+          <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-all ${value ? 'left-6' : 'left-1'}`} />
         </div>
-
-        <p className="text-gray-400 text-sm">
-          Cancelling <span className="text-white font-semibold">{item.food_item_name}</span> ×{item.quantity}.
-          The customer will be notified.
-        </p>
-
-        {/* Restore stock toggle */}
-        <button
-          onClick={() => setRestoreStock(s => !s)}
-          className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors
-            ${restoreStock
-              ? 'bg-green-900/40 border-green-700 text-green-300'
-              : 'bg-gray-800 border-gray-700 text-gray-400'}`}
-        >
-          <span className="text-sm font-medium">Restore stock to inventory?</span>
-          <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0
-            ${restoreStock ? 'bg-green-500' : 'bg-gray-600'}`}>
-            <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all
-              ${restoreStock ? 'left-5' : 'left-0.5'}`} />
-          </div>
-        </button>
-        <p className="text-xs text-gray-600 -mt-2">
-          {restoreStock
-            ? 'Stock will be added back — use this if the item was never started.'
-            : 'Stock stays deducted — use this if ingredients were already used or wasted.'}
-        </p>
-
-        {/* PIN */}
-        <div>
-          <label className="text-xs text-gray-500 mb-1 block">Staff PIN</label>
-          <input
-            ref={inputRef}
-            type="password"
-            value={pin}
-            onChange={e => setPin(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && submit()}
-            placeholder="Enter PIN to confirm"
-            className="w-full bg-gray-800 border border-gray-600 rounded-xl px-4 py-2.5 text-white
-                       placeholder-gray-600 focus:outline-none focus:border-red-500 text-center
-                       tracking-widest text-lg font-mono"
-          />
-        </div>
-
-        <div className="flex gap-3">
-          <button onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl border border-gray-700 text-gray-400 hover:text-white
-                       hover:border-gray-500 transition-colors font-semibold">
-            Back
-          </button>
-          <button
-            onClick={submit}
-            disabled={loading}
-            className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold
-                       transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {loading ? <Loader2 size={16} className="animate-spin" /> : 'Cancel Item'}
-          </button>
-        </div>
-      </div>
+      </button>
+      <p className="text-xs text-gray-400 mt-1 px-1">{hint}</p>
     </div>
   )
 }
 
-// ── Reduce-quantity picker modal ──────────────────────────────────────────────
-function ReduceModal({ item, onConfirm, onClose, loading }) {
-  const [pin,          setPin]          = useState('')
-  const [newQty,       setNewQty]       = useState(item.quantity - 1)
+// ── Cancel modal ──────────────────────────────────────────────────────────────
+function CancelItemModal({ item, onConfirm, onClose, loading }) {
+  const [pin, setPin]                   = useState('')
   const [restoreStock, setRestoreStock] = useState(false)
-  const inputRef                        = useRef(null)
-
-  useEffect(() => { inputRef.current?.focus() }, [])
+  const ref                             = useRef(null)
+  useEffect(() => { ref.current?.focus() }, [])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Minus size={16} className="text-amber-400" />
-            <h3 className="font-bold text-white text-lg">Reduce Quantity</h3>
-          </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
-        </div>
-
-        <p className="text-gray-400 text-sm">
-          <span className="text-white font-semibold">{item.food_item_name}</span> — currently ×{item.quantity}
-        </p>
-
-        <div>
-          <label className="text-xs text-gray-500 mb-1 block">Serve how many?</label>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setNewQty(q => Math.max(1, q - 1))}
-              className="w-10 h-10 rounded-xl bg-gray-800 border border-gray-700 text-white
-                         flex items-center justify-center hover:bg-gray-700"
-            >
-              <Minus size={16} />
-            </button>
-            <span className="text-white font-extrabold text-3xl flex-1 text-center">{newQty}</span>
-            <button
-              onClick={() => setNewQty(q => Math.min(item.quantity - 1, q + 1))}
-              className="w-10 h-10 rounded-xl bg-gray-800 border border-gray-700 text-white
-                         flex items-center justify-center hover:bg-gray-700"
-            >
-              <span className="text-xl font-bold">+</span>
-            </button>
-          </div>
-          <p className="text-xs text-gray-600 text-center mt-1">
-            {item.quantity - newQty} will be cancelled
-          </p>
-        </div>
-
-        {/* Restore stock toggle */}
-        <button
-          onClick={() => setRestoreStock(s => !s)}
-          className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors
-            ${restoreStock
-              ? 'bg-green-900/40 border-green-700 text-green-300'
-              : 'bg-gray-800 border-gray-700 text-gray-400'}`}
-        >
-          <span className="text-sm font-medium">Restore reduced stock?</span>
-          <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0
-            ${restoreStock ? 'bg-green-500' : 'bg-gray-600'}`}>
-            <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all
-              ${restoreStock ? 'left-5' : 'left-0.5'}`} />
-          </div>
-        </button>
-        <p className="text-xs text-gray-600 -mt-2">
-          {restoreStock
-            ? 'Stock will be added back for the cancelled portion.'
-            : 'Stock stays deducted — ingredients already used or wasted.'}
-        </p>
-
-        <div>
-          <label className="text-xs text-gray-500 mb-1 block">Staff PIN</label>
-          <input
-            ref={inputRef}
-            type="password"
-            value={pin}
-            onChange={e => setPin(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && onConfirm(newQty, pin, restoreStock)}
-            placeholder="Enter PIN"
-            className="w-full bg-gray-800 border border-gray-600 rounded-xl px-4 py-2 text-white
-                       placeholder-gray-600 focus:outline-none focus:border-amber-500 text-center
-                       tracking-widest font-mono"
-          />
-        </div>
-
-        <div className="flex gap-3">
-          <button onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl border border-gray-700 text-gray-400 hover:text-white
-                       hover:border-gray-500 transition-colors font-semibold">
-            Cancel
+    <Modal open={!!item} onClose={onClose} title="Cancel Item" size="sm"
+      footer={
+        <>
+          <button onClick={onClose} className="btn-ghost">Back</button>
+          <button onClick={() => !loading && onConfirm(pin, restoreStock)} disabled={loading} className="btn-danger">
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <><Trash2 size={14} />Remove Item</>}
           </button>
-          <button
-            onClick={() => onConfirm(newQty, pin, restoreStock)}
-            disabled={loading}
-            className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold
-                       transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {loading ? <Loader2 size={16} className="animate-spin" /> : 'Reduce'}
-          </button>
-        </div>
+        </>
+      }
+    >
+      <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 mb-4">
+        <p className="text-sm text-red-700 font-medium">{item?.food_item_name}</p>
+        <p className="text-xs text-red-500 mt-0.5">Quantity: {item?.quantity} · Customer will be notified</p>
       </div>
-    </div>
+
+      <StockToggle
+        value={restoreStock}
+        onChange={setRestoreStock}
+        label="Restore stock to inventory?"
+        hint={restoreStock
+          ? 'Ingredients will be added back — use when item was never started.'
+          : 'Ingredients stay deducted — use when already used or wasted.'}
+      />
+
+      <Field label="Staff PIN">
+        <input ref={ref} type="password" value={pin}
+          onChange={e => setPin(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && !loading && onConfirm(pin, restoreStock)}
+          placeholder="Enter your PIN"
+          className="input text-center tracking-[0.4em] font-mono text-lg"
+        />
+      </Field>
+    </Modal>
+  )
+}
+
+// ── Reduce modal ──────────────────────────────────────────────────────────────
+function ReduceModal({ item, onConfirm, onClose, loading }) {
+  const [pin, setPin]                   = useState('')
+  const [newQty, setNewQty]             = useState(1)
+  const [restoreStock, setRestoreStock] = useState(false)
+  const ref                             = useRef(null)
+
+  useEffect(() => { if (item) setNewQty(item.quantity - 1) }, [item?.id])
+  useEffect(() => { ref.current?.focus() }, [])
+
+  const max = item ? item.quantity - 1 : 1
+
+  return (
+    <Modal open={!!item} onClose={onClose} title="Reduce Quantity" size="sm"
+      footer={
+        <>
+          <button onClick={onClose} className="btn-ghost">Cancel</button>
+          <button onClick={() => !loading && onConfirm(newQty, pin, restoreStock)} disabled={loading} className="btn-primary">
+            {loading ? <Loader2 size={14} className="animate-spin" /> : 'Confirm'}
+          </button>
+        </>
+      }
+    >
+      <p className="text-sm text-gray-500 mb-4">
+        <span className="font-semibold text-gray-800">{item?.food_item_name}</span>
+        {' '}— ordered ×{item?.quantity}, serving how many?
+      </p>
+
+      {/* Qty stepper */}
+      <div className="flex items-center justify-center gap-4 mb-1">
+        <button type="button" onClick={() => setNewQty(q => Math.max(1, q - 1))}
+          className="w-11 h-11 rounded-xl border-2 border-gray-200 flex items-center justify-center
+                     hover:border-gray-300 hover:bg-gray-50 transition-all text-gray-600">
+          <Minus size={18} />
+        </button>
+        <div className="text-center min-w-[60px]">
+          <span className="text-5xl font-black text-gray-800 leading-none">{newQty}</span>
+        </div>
+        <button type="button" onClick={() => setNewQty(q => Math.min(max, q + 1))}
+          className="w-11 h-11 rounded-xl border-2 border-gray-200 flex items-center justify-center
+                     hover:border-gray-300 hover:bg-gray-50 transition-all text-gray-600 text-2xl font-bold">
+          +
+        </button>
+      </div>
+      {item && (
+        <p className="text-xs text-gray-400 text-center mb-4">
+          {item.quantity - newQty} item{item.quantity - newQty !== 1 ? 's' : ''} will be cancelled
+        </p>
+      )}
+
+      <StockToggle
+        value={restoreStock}
+        onChange={setRestoreStock}
+        label="Restore reduced portion to stock?"
+        hint={restoreStock ? 'Ingredients for cancelled portion will be added back.' : 'Ingredients stay deducted.'}
+      />
+
+      <Field label="Staff PIN">
+        <input ref={ref} type="password" value={pin}
+          onChange={e => setPin(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && !loading && onConfirm(newQty, pin, restoreStock)}
+          placeholder="Enter your PIN"
+          className="input text-center tracking-[0.4em] font-mono text-lg"
+        />
+      </Field>
+    </Modal>
   )
 }
 
 // ── Single item row ───────────────────────────────────────────────────────────
-function KitchenItem({ item, statusText, dimmed = false, onCancel, onReduce }) {
-  const isCustom               = item.food_item === null
+function KitchenItem({ item, qtyClass, onCancel, onReduce }) {
+  const isCustom               = !item.food_item
   const isCancelled            = item.cancelled_by_kitchen
   const { components, addons } = parseNotes(item.notes)
 
   return (
-    <div className={`rounded-xl p-3 space-y-2 relative ${
-      isCancelled
-        ? 'bg-gray-800/30 border border-gray-700/40 opacity-50'
-        : isCustom
-          ? 'bg-amber-900/30 border border-amber-600/40'
-          : dimmed ? 'bg-gray-800/60' : 'bg-gray-800'
-    }`}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
-          {isCustom && !isCancelled && <Wand2 size={13} className="text-amber-400 flex-shrink-0 mt-0.5" />}
-          <span className={`font-bold text-lg leading-tight ${
-            isCancelled ? 'line-through text-gray-600'
-            : isCustom  ? 'text-amber-200'
-            : dimmed    ? 'text-gray-300'
-            :             'text-white'
-          }`}>
+    <div className={`flex items-start gap-3 py-3 border-b border-gray-100 last:border-0 ${isCancelled ? 'opacity-35' : ''}`}>
+
+      {/* Quantity circle */}
+      <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-black text-lg
+        ${isCancelled ? 'bg-gray-200 text-gray-400' : qtyClass}`}>
+        {item.quantity}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 min-w-0 pt-0.5">
+        <div className="flex items-center gap-2 flex-wrap">
+          {isCustom && !isCancelled && <Wand2 size={13} className="text-amber-500 flex-shrink-0" />}
+          <span className={`font-semibold text-base leading-snug
+            ${isCancelled ? 'line-through text-gray-400' : 'text-gray-800'}`}>
             {item.food_item_name}
           </span>
           {isCancelled && (
-            <span className="text-xs bg-red-900/50 text-red-400 border border-red-800/50 px-2 py-0.5 rounded-full">
+            <span className="text-xs bg-red-100 text-red-500 px-2 py-0.5 rounded-full font-medium shrink-0">
               Cancelled
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <span className={`font-extrabold text-2xl ${
-            isCancelled ? 'text-gray-600 line-through' : dimmed ? 'text-gray-500' : statusText
-          }`}>
-            ×{item.quantity}
-          </span>
 
-          {/* Action buttons — only for non-cancelled items on kitchen side */}
-          {!isCancelled && !dimmed && onCancel && (
-            <>
-              {item.quantity > 1 && (
-                <button
-                  onClick={() => onReduce(item)}
-                  title="Reduce quantity"
-                  className="w-7 h-7 rounded-lg bg-amber-900/60 border border-amber-700/50 text-amber-400
-                             flex items-center justify-center hover:bg-amber-800/60 transition-colors"
-                >
-                  <Minus size={13} />
-                </button>
-              )}
-              <button
-                onClick={() => onCancel(item)}
-                title="Cancel item"
-                className="w-7 h-7 rounded-lg bg-red-900/60 border border-red-700/50 text-red-400
-                           flex items-center justify-center hover:bg-red-800/60 transition-colors"
-              >
-                <Trash2 size={13} />
-              </button>
-            </>
-          )}
-        </div>
+        {!isCancelled && isCustom && components?.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {components.map((c, i) => (
+              <span key={i} className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
+                {c}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {!isCancelled && addons?.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1.5 items-center">
+            <span className="text-xs text-gray-400 font-medium">+ Add-ons:</span>
+            {addons.map((a, i) => (
+              <span key={i} className="inline-flex items-center gap-1 text-xs bg-violet-50 text-violet-600 border border-violet-100 px-2 py-0.5 rounded-full font-medium">
+                <Sparkles size={9} />{a}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
-      {!isCancelled && isCustom && components && components.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {components.map((c, i) => (
-            <span key={i}
-              className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-medium">
-              {c}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {!isCancelled && addons && addons.length > 0 && (
-        <div className="flex flex-wrap gap-1 items-center">
-          <span className="text-xs text-gray-500 mr-0.5">Add-ons:</span>
-          {addons.map((a, i) => (
-            <span key={i}
-              className="inline-flex items-center gap-0.5 text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full font-medium">
-              <Sparkles size={9} />{a}
-            </span>
-          ))}
+      {/* Action buttons — only for active items */}
+      {!isCancelled && onCancel && (
+        <div className="flex gap-1 flex-shrink-0 pt-0.5">
+          {item.quantity > 1 && (
+            <button onClick={() => onReduce(item)} title="Reduce quantity"
+              className="w-8 h-8 rounded-lg border border-amber-200 bg-amber-50 text-amber-600
+                         flex items-center justify-center hover:bg-amber-100 transition-colors">
+              <Minus size={14} />
+            </button>
+          )}
+          <button onClick={() => onCancel(item)} title="Cancel item"
+            className="w-8 h-8 rounded-lg border border-red-200 bg-red-50 text-red-500
+                       flex items-center justify-center hover:bg-red-100 transition-colors">
+            <Trash2 size={14} />
+          </button>
         </div>
       )}
     </div>
   )
 }
 
-// ── Active orders tab ─────────────────────────────────────────────────────────
+// ── Active orders ─────────────────────────────────────────────────────────────
 function ActiveOrders({ batches, pendingCount, preparingCount, advance, onCancelItem, onReduceItem }) {
-  const activeBatches = batches.filter(b =>
-    b.items.some(i => !i.cancelled_by_kitchen)
-  )
+  const activeBatches = batches.filter(b => b.items.some(i => !i.cancelled_by_kitchen))
 
   if (activeBatches.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4 text-gray-600">
-        <UtensilsCrossed size={56} />
-        <p className="text-xl font-semibold">All caught up!</p>
-        <p className="text-sm">No pending orders right now</p>
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <div className="w-20 h-20 rounded-full bg-green-50 flex items-center justify-center">
+          <UtensilsCrossed size={36} className="text-green-400" />
+        </div>
+        <div className="text-center">
+          <p className="text-xl font-bold text-gray-700">All caught up!</p>
+          <p className="text-sm text-gray-400 mt-1">No pending orders right now</p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2 bg-amber-500/20 border border-amber-500/40 rounded-xl px-4 py-2">
-          <span className="text-amber-300 font-bold text-2xl">{pendingCount}</span>
-          <span className="text-amber-400 text-sm font-medium">New</span>
+    <div className="space-y-5">
+      {/* Summary row */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2.5 bg-green-50 border border-green-200 rounded-2xl px-5 py-2.5">
+          <span className="text-2xl font-black text-green-600">{pendingCount}</span>
+          <div>
+            <p className="text-xs font-bold text-green-600 uppercase tracking-wide leading-none">New</p>
+            <p className="text-xs text-green-500">orders</p>
+          </div>
         </div>
-        <div className="flex items-center gap-2 bg-blue-500/20 border border-blue-500/40 rounded-xl px-4 py-2">
-          <span className="text-blue-300 font-bold text-2xl">{preparingCount}</span>
-          <span className="text-blue-400 text-sm font-medium">Preparing</span>
+        <div className="flex items-center gap-2.5 bg-blue-50 border border-blue-200 rounded-2xl px-5 py-2.5">
+          <span className="text-2xl font-black text-blue-600">{preparingCount}</span>
+          <div>
+            <p className="text-xs font-bold text-blue-600 uppercase tracking-wide leading-none">In</p>
+            <p className="text-xs text-blue-500">progress</p>
+          </div>
         </div>
-        <p className="text-gray-500 text-xs ml-auto">Auto-refreshes every 10s</p>
+        <p className="text-xs text-gray-400 ml-auto hidden sm:block">Refreshes every 10 seconds</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+      {/* Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
         {batches.map(batch => {
-          const meta        = STATUS_META[batch.status]
+          const meta        = STATUS[batch.status]
           const isPending   = batch.status === 'PENDING'
           const isWorking   = advance.isPending && advance.variables?.id === batch.id
           const nextStatus  = isPending ? 'PREPARING' : 'SERVED'
@@ -375,67 +335,94 @@ function ActiveOrders({ batches, pendingCount, preparingCount, advance, onCancel
           if (activeItems.length === 0) return null
 
           return (
-            <div key={batch.id}
-              className={`rounded-2xl bg-gray-900 border-2 ${meta.border} flex flex-col overflow-hidden`}>
+            <div key={batch.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
 
-              <div className={`${meta.bg} px-4 py-2.5 flex items-center justify-between gap-3`}>
-                <div className="flex items-center gap-2">
-                  {batch.is_counter ? (
-                    <div className="flex flex-col leading-tight">
-                      <span className="text-white/60 text-[10px] font-semibold uppercase tracking-wide">Counter</span>
-                      <span className="text-white font-extrabold text-lg">{batch.order_number}</span>
-                    </div>
-                  ) : (
-                    <span className="text-white font-extrabold text-2xl">T{batch.table_number}</span>
-                  )}
-                  {batch.added_by === 'BILLER' && !batch.is_counter && (
-                    <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">Biller</span>
-                  )}
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    batch.order_type === 'PARCEL'
-                      ? 'bg-orange-500/30 text-orange-200 border border-orange-400/40'
-                      : 'bg-white/20 text-white/80'
-                  }`}>
-                    {batch.order_type === 'PARCEL' ? 'Parcel' : 'Dine In'}
-                  </span>
+              {/* ── Coloured header ── */}
+              <div className={`${meta.header} px-4 py-3`}>
+                <div className="flex items-start justify-between gap-2">
+
+                  {/* Left: table / order */}
+                  <div className="min-w-0">
+                    {batch.is_counter ? (
+                      <>
+                        <p className="text-white/70 text-xs font-semibold uppercase tracking-widest leading-none mb-1">
+                          Counter
+                        </p>
+                        <p className="text-white font-black text-lg leading-tight break-all">
+                          {batch.order_number}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-white/70 text-xs font-semibold uppercase tracking-widest leading-none mb-1">
+                          Table
+                        </p>
+                        <p className="text-white font-black text-4xl leading-none">
+                          {batch.table_number}
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Right: status + timer */}
+                  <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                    <span className="bg-white/25 text-white text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wide">
+                      {meta.label}
+                    </span>
+                    <LiveTimer placedAt={batch.placed_at} invert />
+                  </div>
                 </div>
-                <div className="flex flex-col items-end gap-1">
-                  <p className="text-white/90 text-xs font-semibold">{meta.label}</p>
-                  <p className="text-white/70 text-xs font-mono">{format(parseISO(batch.placed_at), 'dd MMM · HH:mm')}</p>
-                  <LiveTimer placedAt={batch.placed_at} />
+
+                {/* Meta row: source + order type + time */}
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  {batch.added_by === 'BILLER' && !batch.is_counter && (
+                    <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-medium">
+                      Staff added
+                    </span>
+                  )}
+                  <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full
+                    ${batch.order_type === 'PARCEL'
+                      ? 'bg-orange-100 text-orange-700'
+                      : 'bg-white/25 text-white'}`}>
+                    {batch.order_type === 'PARCEL' ? '📦 Parcel' : '🍽 Dine In'}
+                  </span>
+                  <span className="bg-white/25 text-white text-xs ml-auto font-mono font-semibold px-2 py-0.5 rounded-full">
+                    {format(parseISO(batch.placed_at), 'hh:mm a')}
+                  </span>
                 </div>
               </div>
 
-              <div className="flex-1 px-4 py-3 space-y-2">
+              {/* ── Items ── */}
+              <div className="flex-1 px-4 pt-1 pb-2">
                 {batch.items.map(item => (
                   <KitchenItem
                     key={item.id}
                     item={item}
-                    statusText={meta.text}
+                    qtyClass={meta.itemQty}
                     onCancel={onCancelItem}
                     onReduce={onReduceItem}
                   />
                 ))}
                 {batch.notes && (
-                  <p className="text-gray-400 text-xs border-t border-gray-800 pt-2 italic">
-                    Note: {batch.notes}
-                  </p>
+                  <div className="mt-2 mb-1 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+                    <p className="text-xs font-medium text-amber-700">📝 {batch.notes}</p>
+                  </div>
                 )}
               </div>
 
+              {/* ── CTA button ── */}
               <div className="px-4 pb-4">
                 <button
                   onClick={() => advance.mutate({ id: batch.id, nextStatus })}
                   disabled={isWorking}
-                  className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-white
-                    transition-opacity disabled:opacity-50
-                    ${isPending ? 'bg-blue-600 hover:bg-blue-500' : 'bg-green-600 hover:bg-green-500'}`}
+                  className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm
+                    transition-all disabled:opacity-50 shadow-sm ${meta.btn}`}
                 >
                   {isWorking
-                    ? <Loader2 size={18} className="animate-spin" />
+                    ? <Loader2 size={17} className="animate-spin" />
                     : isPending
-                      ? <><ChefHat size={18} /> Start Preparing</>
-                      : <><CheckCheck size={18} /> Mark as Served</>
+                      ? <><ChefHat size={17} /> Start Preparing</>
+                      : <><CheckCheck size={17} /> Mark as Served</>
                   }
                 </button>
               </div>
@@ -447,21 +434,25 @@ function ActiveOrders({ batches, pendingCount, preparingCount, advance, onCancel
   )
 }
 
+// ── Duration badge ────────────────────────────────────────────────────────────
 function BatchDuration({ placedAt, servedAt }) {
   if (!servedAt) return null
-  const mins = Math.round((new Date(servedAt) - new Date(placedAt)) / 60000)
-  const label = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`
-  const color = mins <= 15 ? 'text-green-400' : mins <= 30 ? 'text-yellow-400' : 'text-red-400'
-  return <span className={`text-xs font-mono font-semibold ${color}`}>{label}</span>
+  const mins  = Math.round((new Date(servedAt) - new Date(placedAt)) / 60000)
+  const label = mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}m`
+  const cls   = mins <= 15 ? 'bg-green-50 text-green-700 border-green-100'
+              : mins <= 30 ? 'bg-amber-50 text-amber-700 border-amber-100'
+              :               'bg-red-50 text-red-600 border-red-100'
+  return (
+    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${cls}`}>{label}</span>
+  )
 }
 
-// ── Served orders tab ─────────────────────────────────────────────────────────
-function ServedOrders({ onCancelItem }) {
+// ── Served orders ─────────────────────────────────────────────────────────────
+function ServedOrders() {
   const today     = format(new Date(), 'yyyy-MM-dd')
   const yesterday = format(new Date(Date.now() - 86400000), 'yyyy-MM-dd')
-
   const [selectedDate, setSelectedDate] = useState(today)
-  const [customDate,   setCustomDate]   = useState('')
+  const [customDate, setCustomDate]     = useState('')
 
   const { data, isLoading } = useQuery({
     queryKey:        ['kitchen-served', selectedDate],
@@ -469,127 +460,125 @@ function ServedOrders({ onCancelItem }) {
     refetchInterval: 30_000,
   })
 
-  const batches       = data?.batches || []
+  const batches        = data?.batches || []
   const cancelledCount = batches.reduce((n, b) => n + b.items.filter(i => i.cancelled_by_kitchen).length, 0)
-
-  const pickDate = (d) => { setSelectedDate(d); setCustomDate('') }
+  const pickDate       = d => { setSelectedDate(d); setCustomDate('') }
 
   return (
     <div className="space-y-4">
-
-      {/* Date filter bar */}
+      {/* Date filter */}
       <div className="flex items-center gap-2 flex-wrap">
-        <button
-          onClick={() => pickDate(today)}
-          className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors
-            ${selectedDate === today ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
-        >
-          Today
-        </button>
-        <button
-          onClick={() => pickDate(yesterday)}
-          className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors
-            ${selectedDate === yesterday ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
-        >
-          Yesterday
-        </button>
-        <input
-          type="date"
-          value={customDate}
-          max={today}
+        {[{ label: 'Today', val: today }, { label: 'Yesterday', val: yesterday }].map(({ label, val }) => (
+          <button key={val} onClick={() => pickDate(val)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors
+              ${selectedDate === val ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+            {label}
+          </button>
+        ))}
+        <input type="date" value={customDate} max={today}
           onChange={e => { setCustomDate(e.target.value); setSelectedDate(e.target.value) }}
-          className="bg-gray-800 border border-gray-700 text-gray-300 text-sm rounded-lg px-3 py-1.5
-                     focus:outline-none focus:border-green-600 cursor-pointer"
+          className="input w-auto py-1.5 text-sm"
         />
         {batches.length > 0 && (
-          <span className="ml-auto text-gray-500 text-xs">
+          <span className="ml-auto text-gray-400 text-sm">
             {batches.length} order{batches.length !== 1 ? 's' : ''}
-            {cancelledCount > 0 && ` · ${cancelledCount} item${cancelledCount !== 1 ? 's' : ''} cancelled`}
+            {cancelledCount > 0 && ` · ${cancelledCount} cancelled`}
           </span>
         )}
       </div>
 
-      {/* Content */}
       {isLoading ? (
-        <div className="flex items-center justify-center h-40 text-gray-500">
+        <div className="flex items-center justify-center h-40 text-gray-400">
           <Loader2 size={24} className="animate-spin" />
         </div>
       ) : batches.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-64 gap-3 text-gray-600">
-          <ClipboardCheck size={48} />
-          <p className="text-lg font-semibold">No served orders</p>
-          <p className="text-sm text-gray-700">
-            {selectedDate === today ? 'Nothing served today yet.' : `No orders on ${format(new Date(selectedDate + 'T00:00:00'), 'dd MMM yyyy')}.`}
-          </p>
-        </div>
+        <Empty
+          icon={<ClipboardCheck size={40} />}
+          message={selectedDate === today
+            ? 'Nothing served today yet.'
+            : `No orders on ${format(new Date(selectedDate + 'T00:00:00'), 'dd MMM yyyy')}.`}
+        />
       ) : (
-        <div className="rounded-2xl overflow-hidden border border-gray-800">
-          {batches.map((batch, idx) => {
-            const activeItems    = batch.items.filter(i => !i.cancelled_by_kitchen)
-            const cancelledItems = batch.items.filter(i => i.cancelled_by_kitchen)
-            return (
-              <div
-                key={batch.id}
-                className={`flex items-start gap-4 px-4 py-3 ${idx !== batches.length - 1 ? 'border-b border-gray-800' : ''} hover:bg-gray-900/50 transition-colors`}
-              >
-                {/* Time */}
-                <span className="text-gray-300 text-sm font-mono font-semibold w-12 flex-shrink-0 pt-0.5">
-                  {format(parseISO(batch.placed_at), 'HH:mm')}
-                </span>
-
-                {/* Table + source */}
-                <div className="flex flex-col gap-0.5 w-20 flex-shrink-0">
-                  {batch.is_counter ? (
-                    <>
-                      <span className="text-amber-400 font-bold text-xs">Counter</span>
-                      <span className="text-white font-bold text-sm">{batch.order_number}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-white font-bold text-sm">T{batch.table_number}</span>
-                      {batch.added_by === 'BILLER' && (
-                        <span className="text-xs text-gray-500">Biller</span>
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Table / Order</th>
+                <th>Type</th>
+                <th>Items</th>
+                <th className="text-right">Duration</th>
+              </tr>
+            </thead>
+            <tbody>
+              {batches.map(batch => {
+                const active    = batch.items.filter(i => !i.cancelled_by_kitchen)
+                const cancelled = batch.items.filter(i => i.cancelled_by_kitchen)
+                return (
+                  <tr key={batch.id}>
+                    <td className="font-mono text-sm font-semibold text-gray-600 whitespace-nowrap">
+                      {format(parseISO(batch.placed_at), 'hh:mm a')}
+                    </td>
+                    <td>
+                      {batch.is_counter ? (
+                        <div>
+                          <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">Counter</p>
+                          <p className="font-bold text-gray-800">{batch.order_number}</p>
+                        </div>
+                      ) : (
+                        <div>
+                          <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">Table</p>
+                          <p className="font-black text-gray-800 text-xl leading-none">T{batch.table_number}</p>
+                          {batch.added_by === 'BILLER' && <p className="text-xs text-gray-400 mt-0.5">Staff added</p>}
+                        </div>
                       )}
-                    </>
-                  )}
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full w-fit ${
-                    batch.order_type === 'PARCEL'
-                      ? 'bg-orange-500/20 text-orange-400'
-                      : 'bg-gray-700 text-gray-400'
-                  }`}>
-                    {batch.order_type === 'PARCEL' ? 'Parcel' : 'Dine In'}
-                  </span>
-                </div>
-
-                {/* Items */}
-                <div className="flex-1 min-w-0 space-y-0.5">
-                  {activeItems.map(i => (
-                    <div key={i.id} className="flex items-center gap-2 text-sm text-gray-300">
-                      <span className="text-yellow-400 font-bold text-xs w-6 text-right flex-shrink-0">×{i.quantity}</span>
-                      <span>{i.food_item_name}</span>
-                    </div>
-                  ))}
-                  {cancelledItems.map(i => (
-                    <div key={i.id} className="flex items-center gap-2 text-xs text-red-400 line-through opacity-70">
-                      <span className="font-bold w-6 text-right flex-shrink-0">×{i.quantity}</span>
-                      <span>{i.food_item_name}</span>
-                    </div>
-                  ))}
-                  {batch.notes && (
-                    <p className="text-gray-600 text-xs mt-1 italic">{batch.notes}</p>
-                  )}
-                </div>
-
-                {/* Served + duration */}
-                <div className="flex flex-col items-end gap-0.5 flex-shrink-0 pt-0.5">
-                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-500">
-                    <CheckCheck size={13} /> Served
-                  </span>
-                  <BatchDuration placedAt={batch.placed_at} servedAt={batch.served_at} />
-                </div>
-              </div>
-            )
-          })}
+                    </td>
+                    <td>
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full
+                        ${batch.order_type === 'PARCEL'
+                          ? 'bg-orange-100 text-orange-700'
+                          : 'bg-green-100 text-green-700'}`}>
+                        {batch.order_type === 'PARCEL' ? 'Parcel' : 'Dine In'}
+                      </span>
+                    </td>
+                    <td className="max-w-xs">
+                      <div className="space-y-1">
+                        {active.map(i => (
+                          <div key={i.id} className="flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-full bg-green-100 text-green-700 text-xs font-bold flex items-center justify-center flex-shrink-0">
+                              {i.quantity}
+                            </span>
+                            <span className="text-sm text-gray-700 font-medium">{i.food_item_name}</span>
+                          </div>
+                        ))}
+                        {cancelled.map(i => (
+                          <div key={i.id} className="flex items-center gap-2 opacity-40">
+                            <span className="w-6 h-6 rounded-full bg-gray-100 text-gray-400 text-xs font-bold flex items-center justify-center flex-shrink-0">
+                              {i.quantity}
+                            </span>
+                            <span className="text-sm text-gray-400 line-through">{i.food_item_name}</span>
+                          </div>
+                        ))}
+                        {batch.notes && (
+                          <p className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg mt-1 italic">
+                            {batch.notes}
+                          </p>
+                        )}
+                      </div>
+                    </td>
+                    <td className="text-right whitespace-nowrap">
+                      <div className="flex flex-col items-end gap-1.5">
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-600">
+                          <CheckCheck size={13} /> Served
+                        </span>
+                        <BatchDuration placedAt={batch.placed_at} servedAt={batch.served_at} />
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -600,10 +589,8 @@ function ServedOrders({ onCancelItem }) {
 export default function KitchenPage() {
   const [tab, setTab] = useState('active')
   const qc            = useQueryClient()
-
-  // PIN / reduce modal state
-  const [cancelTarget, setCancelTarget] = useState(null) // item to cancel
-  const [reduceTarget, setReduceTarget] = useState(null) // item to reduce
+  const [cancelTarget, setCancelTarget] = useState(null)
+  const [reduceTarget, setReduceTarget] = useState(null)
 
   const { data, isLoading } = useQuery({
     queryKey:        ['kitchen-batches'],
@@ -614,8 +601,8 @@ export default function KitchenPage() {
   const advance = useMutation({
     mutationFn: ({ id, nextStatus }) => tablesAPI.kitchen.updateStatus(id, nextStatus),
     onSuccess:  () => {
-      qc.invalidateQueries(['kitchen-batches'])
-      qc.invalidateQueries(['kitchen-served'])
+      qc.invalidateQueries({ queryKey: ['kitchen-batches'] })
+      qc.invalidateQueries({ queryKey: ['kitchen-served'] })
     },
     onError: () => toast.error('Failed to update status'),
   })
@@ -623,76 +610,77 @@ export default function KitchenPage() {
   const cancelMutation = useMutation({
     mutationFn: ({ itemId, pin, restoreStock }) => tablesAPI.kitchen.cancelItem(itemId, pin, restoreStock),
     onSuccess: () => {
-      toast.success('Item cancelled and customer notified.')
+      toast.success('Item cancelled.')
       setCancelTarget(null)
-      qc.invalidateQueries(['kitchen-batches'])
-      qc.invalidateQueries(['kitchen-served'])
+      qc.invalidateQueries({ queryKey: ['kitchen-batches'] })
+      qc.invalidateQueries({ queryKey: ['kitchen-served'] })
     },
-    onError: (err) => {
-      const msg = err?.response?.data?.error || 'Failed to cancel item.'
-      toast.error(msg)
-    },
+    onError: err => toast.error(err?.response?.data?.error || 'Failed to cancel item.'),
   })
 
   const reduceMutation = useMutation({
     mutationFn: ({ itemId, newQty, pin, restoreStock }) => tablesAPI.kitchen.reduceItem(itemId, newQty, pin, restoreStock),
     onSuccess: () => {
-      toast.success('Quantity reduced and customer notified.')
+      toast.success('Quantity reduced.')
       setReduceTarget(null)
-      qc.invalidateQueries(['kitchen-batches'])
-      qc.invalidateQueries(['kitchen-served'])
+      qc.invalidateQueries({ queryKey: ['kitchen-batches'] })
+      qc.invalidateQueries({ queryKey: ['kitchen-served'] })
     },
-    onError: (err) => {
-      const msg = err?.response?.data?.error || 'Failed to reduce quantity.'
-      toast.error(msg)
-    },
+    onError: err => toast.error(err?.response?.data?.error || 'Failed to reduce quantity.'),
   })
 
   const batches        = data?.batches        || []
   const pendingCount   = data?.pending_count  ?? 0
   const preparingCount = data?.preparing_count ?? 0
+  const totalActive    = pendingCount + preparingCount
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-400">
-        <Loader2 size={32} className="animate-spin" />
+      <div className="flex items-center justify-center h-64">
+        <Loader2 size={32} className="animate-spin text-primary-500" />
       </div>
     )
   }
 
   return (
-    <div className="p-4 space-y-4">
-      {/* Tabs */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setTab('active')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-colors
-            ${tab === 'active'
-              ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/30'
-              : 'bg-gray-800 text-gray-400 hover:text-white'}`}
-        >
-          <Flame size={15} />
-          Active Orders
-          {(pendingCount + preparingCount) > 0 && (
-            <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full
-              ${tab === 'active' ? 'bg-white/20 text-white' : 'bg-amber-500/30 text-amber-400'}`}>
-              {pendingCount + preparingCount}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setTab('served')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-colors
-            ${tab === 'served'
-              ? 'bg-green-700 text-white shadow-lg shadow-green-700/30'
-              : 'bg-gray-800 text-gray-400 hover:text-white'}`}
-        >
-          <ClipboardCheck size={15} />
-          Finished Orders
-        </button>
+    <div className="space-y-6 max-w-screen-2xl mx-auto">
+
+      {/* Page header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-black text-gray-800 tracking-tight">Kitchen Display</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Live orders · auto-refreshes every 10 seconds</p>
+        </div>
+        {totalActive > 0 && (
+          <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-2xl px-4 py-2">
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-red-600 font-bold text-sm">{totalActive} active order{totalActive !== 1 ? 's' : ''}</span>
+          </div>
+        )}
       </div>
 
-      {/* Tab content */}
+      {/* Tabs */}
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+        {[
+          { id: 'active', label: 'Active Orders', icon: <Flame size={14} />, count: totalActive },
+          { id: 'served', label: 'Served Orders', icon: <ClipboardCheck size={14} /> },
+        ].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold transition-all
+              ${tab === t.id ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+            {t.icon}
+            {t.label}
+            {t.count > 0 && (
+              <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full
+                ${tab === t.id ? 'bg-primary-100 text-primary-600' : 'bg-gray-200 text-gray-600'}`}>
+                {t.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
       {tab === 'active'
         ? <ActiveOrders
             batches={batches}
@@ -702,28 +690,21 @@ export default function KitchenPage() {
             onCancelItem={setCancelTarget}
             onReduceItem={setReduceTarget}
           />
-        : <ServedOrders onCancelItem={setCancelTarget} />
+        : <ServedOrders />
       }
 
-      {/* Cancel item modal */}
-      {cancelTarget && (
-        <CancelItemModal
-          item={cancelTarget}
-          loading={cancelMutation.isPending}
-          onClose={() => setCancelTarget(null)}
-          onConfirm={(pin, restoreStock) => cancelMutation.mutate({ itemId: cancelTarget.id, pin, restoreStock })}
-        />
-      )}
-
-      {/* Reduce quantity modal */}
-      {reduceTarget && (
-        <ReduceModal
-          item={reduceTarget}
-          loading={reduceMutation.isPending}
-          onClose={() => setReduceTarget(null)}
-          onConfirm={(newQty, pin, restoreStock) => reduceMutation.mutate({ itemId: reduceTarget.id, newQty, pin, restoreStock })}
-        />
-      )}
+      <CancelItemModal
+        item={cancelTarget}
+        loading={cancelMutation.isPending}
+        onClose={() => setCancelTarget(null)}
+        onConfirm={(pin, restore) => cancelMutation.mutate({ itemId: cancelTarget.id, pin, restoreStock: restore })}
+      />
+      <ReduceModal
+        item={reduceTarget}
+        loading={reduceMutation.isPending}
+        onClose={() => setReduceTarget(null)}
+        onConfirm={(qty, pin, restore) => reduceMutation.mutate({ itemId: reduceTarget.id, newQty: qty, pin, restoreStock: restore })}
+      />
     </div>
   )
 }
