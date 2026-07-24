@@ -171,7 +171,7 @@ function BillModal({ open, onClose, session, gstRate, onBill, title = 'Collect P
     if (open) {
       setPhone(initialPhone || session?.customer_phone || '')
       setName(initialName  || session?.customer_name  || '')
-      setOrderType(session?.order_type || 'DINE_IN')
+      setOrderType('DINE_IN')
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 

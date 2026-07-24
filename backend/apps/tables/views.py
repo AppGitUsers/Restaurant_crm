@@ -249,7 +249,7 @@ class PublicOrderSubmitView(APIView):
                     session.session_key = secrets.token_urlsafe(16)
                     session.save(update_fields=['session_key'])
 
-                # ── Update session customer info and order_type ────────────────
+                # ── Update session customer info ───────────────────────────────
                 sess_update = []
                 if customer_name and customer_name != session.customer_name:
                     session.customer_name = customer_name
@@ -257,9 +257,6 @@ class PublicOrderSubmitView(APIView):
                 if customer_phone and customer_phone != session.customer_phone:
                     session.customer_phone = customer_phone
                     sess_update.append('customer_phone')
-                if order_type != session.order_type:
-                    session.order_type = order_type
-                    sess_update.append('order_type')
                 if sess_update:
                     session.save(update_fields=sess_update)
 
@@ -357,6 +354,7 @@ class PublicOrderSubmitView(APIView):
                 batch = TableOrderBatch.objects.create(
                     session=session,
                     added_by=TableOrderBatch.AddedBy.CUSTOMER,
+                    order_type=order_type,
                     notes=batch_notes,
                     status=TableOrderBatch.Status.PENDING_PAYMENT,
                 )
@@ -435,8 +433,9 @@ class PublicOrderSubmitView(APIView):
                                 )
 
                 # ── Deduct packaging at QR order placement time ────────────────
-                # Deducts packaging matching session.order_type (DINE_IN or PARCEL).
-                # At billing, we check for CUSTOMER batches to skip a second deduction.
+                # Uses batch.order_type (set per-batch by the customer) so mixed
+                # Dine In / Parcel sessions each deduct the correct packaging.
+                # At billing, CUSTOMER batches signal that deduction already happened.
                 from apps.inventory.models import PackagingItem, FoodTypePackaging
                 from django.db.models import F as _F
                 for d in items_data:
@@ -448,7 +447,7 @@ class PublicOrderSubmitView(APIView):
                         continue
                     for mapping in FoodTypePackaging.objects.filter(
                         food_type_id=fi.food_type_id,
-                        order_type=session.order_type,
+                        order_type=batch.order_type,
                     ):
                         deduct_qty = mapping.qty_per_serving * qty
                         PackagingItem.objects.filter(pk=mapping.packaging_item_id).update(
@@ -456,7 +455,7 @@ class PublicOrderSubmitView(APIView):
                         )
                         logger.info(
                             "Packaging deducted at QR order placement: table=%s food=%s order_type=%s qty=%d pkg_id=%d",
-                            table.number, fi.name, session.order_type, deduct_qty, mapping.packaging_item_id,
+                            table.number, fi.name, batch.order_type, deduct_qty, mapping.packaging_item_id,
                         )
 
         except _StockError:
@@ -592,9 +591,8 @@ class PublicBatchCancelView(APIView):
                 ])
 
             # ── Restore packaging deducted at order placement time ─────────
-            # This endpoint is only reachable by QR customers, so packaging
-            # was always deducted when this batch was created. The inner loop
-            # is a no-op if no mappings exist for this order_type.
+            # Uses batch.order_type (same value used when deducting) so the
+            # correct packaging is restored regardless of other batches in the session.
             from apps.inventory.models import PackagingItem, FoodTypePackaging
             from django.db.models import F as _F
             for item in items:
@@ -605,7 +603,7 @@ class PublicBatchCancelView(APIView):
                     continue
                 for mapping in FoodTypePackaging.objects.filter(
                     food_type_id=fi.food_type_id,
-                    order_type=session.order_type,
+                    order_type=batch.order_type,
                 ):
                     restore_qty = mapping.qty_per_serving * item.quantity
                     PackagingItem.objects.filter(pk=mapping.packaging_item_id).update(
@@ -613,7 +611,7 @@ class PublicBatchCancelView(APIView):
                     )
                     logger.info(
                         "Packaging restored on QR customer cancel: table=%s food=%s order_type=%s qty=%d pkg_id=%d",
-                        table.number, fi.name, session.order_type, restore_qty, mapping.packaging_item_id,
+                        table.number, fi.name, batch.order_type, restore_qty, mapping.packaging_item_id,
                     )
 
             batch.delete()
@@ -1286,10 +1284,10 @@ class TableSessionEndView(APIView):
         payment_method = request.data.get('payment_method', 'CASH')
         discount       = request.data.get('discount', 0)
         # BillModal submits whatever the biller confirmed (pre-filled from session or edited);
-        # fall back to session if the biller left the field blank.
+        # fall back to session if the biller left the name/phone blank.
         customer_name  = request.data.get('customer_name', '') or session.customer_name
         customer_phone = request.data.get('customer_phone', '') or session.customer_phone
-        order_type     = session.order_type or request.data.get('order_type', 'DINE_IN')
+        order_type     = request.data.get('order_type', 'DINE_IN')
 
         all_batch_items = []
         for batch in session.batches.prefetch_related('items__food_item').all():

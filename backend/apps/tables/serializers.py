@@ -131,9 +131,11 @@ class TableOrderBatchSerializer(serializers.ModelSerializer):
         return obj.session_id is None
 
     def get_order_type(self, obj):
+        # After billing the Order record is authoritative; before that use the
+        # batch's own field (set at QR placement; null for biller-added batches).
         if obj.billing_order_id:
             return obj.billing_order.order_type
-        return 'DINE_IN'
+        return obj.order_type
 
 
 class TableSessionSerializer(serializers.ModelSerializer):
@@ -146,7 +148,7 @@ class TableSessionSerializer(serializers.ModelSerializer):
         model  = TableSession
         fields = ['id', 'table', 'table_number', 'status',
                   'opened_at', 'closed_at', 'discount',
-                  'customer_name', 'customer_phone', 'order_type',
+                  'customer_name', 'customer_phone',
                   'subtotal', 'item_count', 'batches']
 
 

@@ -33,7 +33,6 @@ class TableSession(models.Model):
     discount       = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     customer_name  = models.CharField(max_length=200, blank=True, default='')
     customer_phone = models.CharField(max_length=20, blank=True, default='')
-    order_type     = models.CharField(max_length=10, default='DINE_IN')
 
     class Meta:
         ordering = ['-opened_at']
@@ -84,6 +83,7 @@ class TableOrderBatch(models.Model):
     billing_order = models.OneToOneField('billing.Order', on_delete=models.SET_NULL, null=True, blank=True, related_name='kitchen_batch')
     status        = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     added_by      = models.CharField(max_length=10, choices=AddedBy.choices, default=AddedBy.CUSTOMER)
+    order_type    = models.CharField(max_length=10, null=True, blank=True)
     placed_at     = models.DateTimeField(auto_now_add=True)
     served_at     = models.DateTimeField(null=True, blank=True)
     notes         = models.TextField(blank=True)
