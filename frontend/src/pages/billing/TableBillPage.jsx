@@ -160,6 +160,130 @@ function AddItemsModal({ open, onClose, sessionId }) {
   )
 }
 
+// ── Pre-payment bill preview helpers ────────────────────────────────────────
+
+function buildPreviewHtml(session, { name, phone, gstRate }) {
+  const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+
+  const allItems = (session.batches || []).flatMap(b =>
+    (b.items || []).filter(i => !i.cancelled_by_kitchen)
+  )
+
+  const rows = allItems.map(item => {
+    const nm      = item.food_item_name || item.custom_name || 'Item'
+    const lineAmt = parseFloat(item.line_total || 0)
+    return `<tr>
+      <td>${nm}${item.notes ? `<br/><span class="note">&#x21B3; ${item.notes}</span>` : ''}</td>
+      <td class="c">&#xD7;${item.quantity}</td>
+      <td class="r">&#x20B9;${lineAmt.toFixed(2)}</td>
+    </tr>`
+  }).join('')
+
+  const sub      = parseFloat(session.subtotal || 0)
+  const disc     = parseFloat(session.discount  || 0)
+  const taxable  = Math.max(0, sub - disc)
+  const tax      = taxable * gstRate
+  const total    = taxable + tax
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<title>Bill Preview — Table ${session.table_number}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:monospace;width:280px;padding:8px;font-size:11px}
+.ctr{text-align:center}.bold{font-weight:bold}
+.dash{border-top:1px dashed #000;margin:5px 0}
+table{width:100%;border-collapse:collapse}
+td,th{vertical-align:top;padding:1px 0;font-size:11px}
+.c{text-align:center;width:28px}.r{text-align:right;width:64px}
+.note{font-size:10px;color:#555}
+.sum{display:flex;justify-content:space-between;padding:1px 0;font-size:11px}
+.tot{font-size:14px;font-weight:bold}
+.preview{font-size:9px;color:#888;text-align:center;margin-top:2px}
+</style></head><body>
+<div class="ctr bold" style="font-size:15px;margin-bottom:2px">BILL PREVIEW</div>
+<div class="preview">** Not yet paid — for reference only **</div>
+<div class="ctr" style="font-size:10px;margin:4px 0">${dateStr} &nbsp; ${timeStr}</div>
+<div class="dash"></div>
+<div style="font-size:11px;margin-bottom:4px">
+  <div><b>Table:</b> ${session.table_number}</div>
+  ${name  ? `<div><b>Customer:</b> ${name}</div>`  : ''}
+  ${phone ? `<div><b>Phone:</b> ${phone}</div>`     : ''}
+</div>
+<div class="dash"></div>
+<table><thead><tr style="opacity:0.6;font-size:10px;text-transform:uppercase">
+  <th style="text-align:left;padding-bottom:3px">Item</th><th class="c">Qty</th><th class="r">Amt</th>
+</tr></thead><tbody>${rows}</tbody></table>
+<div class="dash"></div>
+<div class="sum"><span>Subtotal</span><span>&#x20B9;${sub.toFixed(2)}</span></div>
+${disc > 0 ? `<div class="sum"><span>Discount</span><span>-&#x20B9;${disc.toFixed(2)}</span></div>` : ''}
+<div class="sum"><span>Tax</span><span>&#x20B9;${tax.toFixed(2)}</span></div>
+<div class="dash"></div>
+<div class="sum tot"><span>TOTAL</span><span>&#x20B9;${total.toFixed(2)}</span></div>
+<div class="dash"></div>
+<div class="ctr" style="margin-top:8px;font-size:11px">Thank you! Visit again &#x1F64F;</div><br/>
+</body></html>`
+}
+
+function printPreviewBill(session, opts) {
+  const html = buildPreviewHtml(session, opts)
+  const w    = window.open('', '_blank', 'width=360,height=600,menubar=no,toolbar=no')
+  if (!w) { toast.error('Allow pop-ups to print'); return }
+  w.document.write(html)
+  w.document.close()
+  w.focus()
+  w.print()
+  w.onafterprint = () => w.close()
+}
+
+function downloadPreviewBill(session, opts) {
+  const html = buildPreviewHtml(session, opts)
+  const blob = new Blob([html], { type: 'text/html' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `bill_preview_table${session.table_number}.html`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function previewWhatsApp(session, { name, phone, gstRate }) {
+  const digits = (phone || '').replace(/\D/g, '')
+  if (!digits) { toast.error('Enter a phone number first'); return }
+  const waPhone = digits.length === 10 ? `91${digits}` : digits
+
+  const allItems = (session.batches || []).flatMap(b =>
+    (b.items || []).filter(i => !i.cancelled_by_kitchen)
+  )
+
+  const sub     = parseFloat(session.subtotal || 0)
+  const disc    = parseFloat(session.discount  || 0)
+  const taxable = Math.max(0, sub - disc)
+  const tax     = taxable * gstRate
+  const total   = taxable + tax
+
+  const lines = []
+  lines.push(`🧾 *Bill Preview — Table ${session.table_number}*`)
+  lines.push(``)
+  lines.push(`*Items:*`)
+  allItems.forEach(item => {
+    const nm  = item.food_item_name || item.custom_name || 'Item'
+    const amt = parseFloat(item.line_total || 0)
+    lines.push(`• ${nm} ×${item.quantity}  ₹${amt.toFixed(2)}`)
+    if (item.notes) lines.push(`  ↳ ${item.notes}`)
+  })
+  lines.push(``)
+  lines.push(`Subtotal:  ₹${sub.toFixed(2)}`)
+  if (disc > 0) lines.push(`Discount:  -₹${disc.toFixed(2)}`)
+  lines.push(`Tax:       ₹${tax.toFixed(2)}`)
+  lines.push(`*Total:    ₹${total.toFixed(2)}*`)
+  lines.push(``)
+  lines.push(`_(Preview — not yet paid)_`)
+  lines.push(`Thank you for visiting us! 🙏`)
+
+  window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank')
+}
+
 // ── Bill Confirm Modal ───────────────────────────────────────────────────────
 function BillModal({ open, onClose, session, gstRate, onBill, title = 'Collect Payment', initialName = '', initialPhone = '' }) {
   const [method,    setMethod]    = useState('CASH')
@@ -314,6 +438,34 @@ function BillModal({ open, onClose, session, gstRate, onBill, title = 'Collect P
               onChange={e => setName(e.target.value)}
               placeholder="Walk-in"
             />
+          </div>
+        </div>
+
+        {/* Preview bill actions — share with customer before payment */}
+        <div className="border-t border-gray-100 pt-3">
+          <p className="text-xs font-medium text-gray-400 mb-2">Share bill preview with customer</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => printPreviewBill(session, { name, phone, gstRate })}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs font-semibold transition-colors"
+            >
+              <Printer size={13} /> Print
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadPreviewBill(session, { name, phone, gstRate })}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs font-semibold transition-colors"
+            >
+              <CheckCircle size={13} /> Download
+            </button>
+            <button
+              type="button"
+              onClick={() => previewWhatsApp(session, { name, phone, gstRate })}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-green-200 text-green-600 hover:bg-green-50 text-xs font-semibold transition-colors"
+            >
+              <MessageCircle size={13} /> WhatsApp
+            </button>
           </div>
         </div>
       </div>
