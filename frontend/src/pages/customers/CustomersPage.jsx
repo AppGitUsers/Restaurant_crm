@@ -3,18 +3,30 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { customersAPI, billingAPI } from '@/api'
 import { PageLoader, Modal, SearchBar, StatusBadge, Field, Empty } from '@/components/ui'
 import toast from 'react-hot-toast'
-import { Plus, Edit2, Users, Star, Phone, ShoppingBag, MessageCircle, Loader2 } from 'lucide-react'
+import { Plus, Edit2, Users, Phone, ShoppingBag, MessageCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
 
 export default function CustomersPage() {
   const qc = useQueryClient()
-  const [search, setSearch]   = useState('')
-  const [tagFilter, setTag]   = useState('')
-  const [modal, setModal]     = useState(false)
-  const [detailModal, setDetail] = useState(null)
+  const [search, setSearch]       = useState('')
+  const [tagFilter, setTag]       = useState('')
+  const [page, setPage]           = useState(1)
+  const [modal, setModal]         = useState(false)
+  const [detailModal, setDetail]  = useState(null)
+  const [detailId, setDetailId]   = useState(null)
+
+  const { data: detailData } = useQuery({
+    queryKey: ['customer-detail', detailId],
+    queryFn:  () => customersAPI.get(detailId).then(r => r.data),
+    enabled:  !!detailId,
+  })
   const [sel, setSel]         = useState(null)
   const [form, setForm]       = useState({ name: '', phone: '', email: '', address: '', notes: '' })
 
-  const { data, isLoading } = useQuery({ queryKey: ['customers', search, tagFilter], queryFn: () => customersAPI.list({ search, frequency_tag: tagFilter || undefined }).then(r => r.data.results || r.data) })
+  const { data: pageData, isLoading } = useQuery({
+    queryKey: ['customers', search, tagFilter, page],
+    queryFn:  () => customersAPI.list({ search, frequency_tag: tagFilter || undefined, page }).then(r => r.data),
+    keepPreviousData: true,
+  })
   const save = useMutation({
     mutationFn: d => sel ? customersAPI.update(sel.id, d) : customersAPI.create(d),
     onSuccess: () => { qc.invalidateQueries(['customers']); setModal(false); toast.success('Saved!') },
@@ -63,7 +75,12 @@ export default function CustomersPage() {
   }
 
   const TAG_COLORS = { HIGH: 'badge-green', MEDIUM: 'badge-gold', LOW: 'badge-gray', NEW: 'badge-blue' }
-  const customers  = data || []
+  const customers  = pageData?.results || []
+  const totalCount = pageData?.count || 0
+  const totalPages = Math.ceil(totalCount / 20)
+
+  const handleSearch  = v => { setSearch(v);    setPage(1) }
+  const handleFilter  = v => { setTag(v);       setPage(1) }
 
   return (
     <div>
@@ -72,8 +89,8 @@ export default function CustomersPage() {
         <button onClick={openCreate} className="btn-primary"><Plus size={15} />Add Customer</button>
       </div>
 
-      <SearchBar value={search} onChange={setSearch} placeholder="Search by name or phone…">
-        <select className="select w-40" value={tagFilter} onChange={e => setTag(e.target.value)}>
+      <SearchBar value={search} onChange={handleSearch} placeholder="Search by name or phone…">
+        <select className="select w-40" value={tagFilter} onChange={e => handleFilter(e.target.value)}>
           <option value="">All Customers</option>
           <option value="HIGH">High Value</option>
           <option value="MEDIUM">Regular</option>
@@ -110,15 +127,43 @@ export default function CustomersPage() {
             </div>
             <div className="flex gap-1 border-t border-gray-50 pt-2">
               <button onClick={() => openEdit(c)} className="btn-ghost py-1 text-xs flex-1"><Edit2 size={12} />Edit</button>
-              <button onClick={() => setDetail(c)} className="btn-ghost py-1 text-xs flex-1"><ShoppingBag size={12} />History</button>
+              <button onClick={() => { setDetail(c); setDetailId(c.id) }} className="btn-ghost py-1 text-xs flex-1"><ShoppingBag size={12} />History</button>
             </div>
           </div>
         ))}
         {!isLoading && customers.length === 0 && <div className="col-span-4"><Empty message="No customers found" icon={<Users size={48} />} /></div>}
       </div>
 
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-6">
+          <p className="text-sm text-gray-400">
+            Showing {(page - 1) * 20 + 1}–{Math.min(page * 20, totalCount)} of {totalCount} customers
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(p => p - 1)}
+              disabled={page === 1}
+              className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span className="text-sm font-medium text-gray-700 px-2">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(p => p + 1)}
+              disabled={page === totalPages}
+              className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Customer detail + visit history */}
-      <Modal open={!!detailModal} onClose={() => setDetail(null)} title={`${detailModal?.name} — Visit History`} size="lg">
+      <Modal open={!!detailModal} onClose={() => { setDetail(null); setDetailId(null) }} title={`${detailModal?.name} — Visit History`} size="lg">
         {detailModal && (
           <div>
             <div className="grid grid-cols-3 gap-3 mb-4">
@@ -139,7 +184,7 @@ export default function CustomersPage() {
               <table className="table">
                 <thead><tr><th>Order #</th><th>Amount</th><th>Date</th><th></th></tr></thead>
                 <tbody>
-                  {(detailModal.visits || []).map((v, i) => (
+                  {(detailData?.visits || []).map((v, i) => (
                     <tr key={i}>
                       <td className="font-mono text-sm">{v.order_number}</td>
                       <td className="font-semibold text-primary-600">₹{parseFloat(v.amount_spent).toFixed(2)}</td>
@@ -158,7 +203,7 @@ export default function CustomersPage() {
                       </td>
                     </tr>
                   ))}
-                  {(detailModal.visits || []).length === 0 && (
+                  {(detailData?.visits || []).length === 0 && (
                     <tr><td colSpan={3}><Empty message="No visits recorded" /></td></tr>
                   )}
                 </tbody>

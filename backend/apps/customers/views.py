@@ -4,18 +4,26 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from apps.accounts.permissions import IsAdmin, IsAdminOrBiller
 from .models import Customer, Visit
-from .serializers import CustomerSerializer, VisitSerializer
+from .serializers import CustomerSerializer, CustomerListSerializer, VisitSerializer
 
 logger = logging.getLogger(__name__)
 
 
 class CustomerViewSet(viewsets.ModelViewSet):
-    queryset           = Customer.objects.prefetch_related('visits').all()
-    serializer_class   = CustomerSerializer
     permission_classes = [IsAdminOrBiller]
     filterset_fields   = ['frequency_tag', 'phone']
     search_fields      = ['name', 'phone', 'email']
     ordering_fields    = ['total_visits', 'total_spent', 'created_at']
+
+    def get_queryset(self):
+        if self.action == 'retrieve':
+            return Customer.objects.prefetch_related('visits').all()
+        return Customer.objects.all()
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return CustomerSerializer
+        return CustomerListSerializer
 
     def perform_create(self, serializer):
         customer = serializer.save()
@@ -34,8 +42,8 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def high_value(self, request):
-        qs = self.get_queryset().filter(frequency_tag='HIGH')
-        return Response(CustomerSerializer(qs, many=True).data)
+        qs = Customer.objects.all().filter(frequency_tag='HIGH')
+        return Response(CustomerListSerializer(qs, many=True).data)
 
 
 class VisitViewSet(viewsets.ReadOnlyModelViewSet):

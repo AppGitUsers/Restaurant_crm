@@ -15,9 +15,23 @@ class VisitSerializer(serializers.ModelSerializer):
         except Order.DoesNotExist:
             return None
 
+
+class CustomerListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for list view — no visits."""
+    visit_count = serializers.IntegerField(source='total_visits', read_only=True)
+
+    class Meta:
+        model  = Customer
+        fields = ['id', 'name', 'phone', 'email', 'address', 'frequency_tag',
+                  'total_visits', 'total_spent', 'notes', 'visit_count',
+                  'created_at', 'updated_at']
+        read_only_fields = ['frequency_tag', 'total_visits', 'total_spent']
+
+
 class CustomerSerializer(serializers.ModelSerializer):
-    visits       = VisitSerializer(many=True, read_only=True)
-    visit_count  = serializers.IntegerField(source='total_visits', read_only=True)
+    """Full serializer for detail view — includes visit history."""
+    visits      = VisitSerializer(many=True, read_only=True)
+    visit_count = serializers.IntegerField(source='total_visits', read_only=True)
 
     class Meta:
         model  = Customer
