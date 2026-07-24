@@ -884,7 +884,9 @@ export default function QROrderPage() {
   const [kitchenNotifications, setKitchenNotifications] = useState([])
 
   const categoryRefs   = useRef({})
+  const tabRefs        = useRef({})
   const notifiedServed = useRef(new Set())      // batch IDs already toasted as SERVED
+  const [activeCategory, setActiveCategory] = useState(null)
 
   // sessionStorage (not useRef) is the gate here.
   // sessionStorage persists across page refreshes of the same tab but is
@@ -991,8 +993,48 @@ export default function QROrderPage() {
   const cartCount = cart.reduce((s, ci) => s + ci.quantity, 0)
   const subtotal  = cart.reduce((s, ci) => s + ci.quantity * (ci.unit_price + ci.addon_unit_price), 0)
 
+  // ── Scroll spy: highlight the tab whose section is nearest the top ───────────
+  useEffect(() => {
+    if (!categories.length) return
+    const order = categories.map(c => c.id)
+    // Track which sections are intersecting; pick the topmost one
+    const visible = new Set()
+    const pick = () => {
+      for (const id of order) {
+        if (visible.has(id)) { setActiveCategory(id); return }
+      }
+    }
+    const observers = categories.map(cat => {
+      const el = categoryRefs.current[cat.id]
+      if (!el) return null
+      // Section is "active" when its top edge is within the upper 40% of viewport
+      const obs = new IntersectionObserver(
+        ([entry]) => {
+          entry.isIntersecting ? visible.add(cat.id) : visible.delete(cat.id)
+          pick()
+        },
+        { rootMargin: '-10% 0px -55% 0px', threshold: 0 },
+      )
+      obs.observe(el)
+      return obs
+    }).filter(Boolean)
+    return () => observers.forEach(o => o.disconnect())
+  }, [categories.map(c => c.id).join(',')])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Auto-scroll the active tab pill into view in the tab bar ─────────────────
+  useEffect(() => {
+    if (activeCategory) {
+      tabRefs.current[activeCategory]?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+    }
+  }, [activeCategory])
+
   const scrollTo = (catId) => {
-    categoryRefs.current[catId]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const el = categoryRefs.current[catId]
+    if (!el) return
+    // Offset for sticky header (~52px) + a little breathing room
+    const top = el.getBoundingClientRect().top + window.scrollY - 60
+    window.scrollTo({ top, behavior: 'smooth' })
+    setActiveCategory(catId)
   }
 
   // ── Submit order ────────────────────────────────────────────────────────────
@@ -1215,28 +1257,34 @@ export default function QROrderPage() {
       {/* Category tabs + Customize button */}
       {categories.length > 0 && (
         <div className="sticky top-0 z-10 bg-white border-b border-gray-100 shadow-sm">
-          <div className="flex gap-0 overflow-x-auto scrollbar-hide">
+          <div className="flex gap-0 overflow-x-auto scrollbar-hide px-2 py-2">
             {/* Customize button */}
             {data.customizable_types?.length > 0 && (
               <button
                 onClick={() => setCustomize(true)}
-                className="flex-shrink-0 flex items-center gap-1.5 px-4 py-3 text-sm font-medium
-                           text-amber-600 hover:text-amber-700 bg-amber-50 whitespace-nowrap"
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 mr-1 rounded-full text-sm font-semibold
+                           text-amber-700 bg-amber-100 whitespace-nowrap"
               >
-                <Wand2 size={14} /> Customize
+                <Wand2 size={13} /> Customize
               </button>
             )}
-            {categories.map(cat => (
-              <button
-                key={cat.id}
-                onClick={() => scrollTo(cat.id)}
-                className="flex-shrink-0 flex items-center gap-1.5 px-4 py-3 text-sm font-medium
-                           text-gray-600 hover:text-primary-600 whitespace-nowrap"
-              >
-                {cat.icon && <span>{cat.icon}</span>}
-                {cat.name}
-              </button>
-            ))}
+            {categories.map(cat => {
+              const isActive = activeCategory === cat.id
+              return (
+                <button
+                  key={cat.id}
+                  ref={el => tabRefs.current[cat.id] = el}
+                  onClick={() => scrollTo(cat.id)}
+                  className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 mx-0.5 rounded-full text-sm font-semibold whitespace-nowrap transition-all
+                    ${isActive
+                      ? 'bg-primary-600 text-white shadow-sm'
+                      : 'text-gray-500 hover:text-primary-600 hover:bg-primary-50'}`}
+                >
+                  {cat.icon && <span className={isActive ? 'grayscale-0' : ''}>{cat.icon}</span>}
+                  {cat.name}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
