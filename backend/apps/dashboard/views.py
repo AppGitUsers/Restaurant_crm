@@ -50,9 +50,16 @@ class DashboardSummaryView(APIView):
         high_val_customers = Customer.objects.filter(frequency_tag='HIGH').count()
 
         # ── Top selling items (all time) ─────────────────────────
-        from apps.billing.models import OrderItem
-        top_items = (OrderItem.objects
-                     .filter(order__status='PAID')
+        from apps.tables.models import TableOrderItem
+        from django.db.models import Q
+        top_items = (TableOrderItem.objects
+                     .filter(
+                         cancelled_by_kitchen=False,
+                     )
+                     .filter(
+                         Q(batch__billing_order__status='PAID') |
+                         Q(batch__session__status='BILLED')
+                     )
                      .annotate(
                          display_name=Case(
                              When(food_item__isnull=False, then=F('food_item__name')),
