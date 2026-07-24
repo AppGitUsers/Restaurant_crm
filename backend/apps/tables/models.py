@@ -74,6 +74,7 @@ class TableOrderBatch(models.Model):
         PENDING         = 'PENDING',         'Pending'
         PREPARING       = 'PREPARING',       'Preparing'
         SERVED          = 'SERVED',          'Served'
+        CANCELLED       = 'CANCELLED',       'Cancelled'
 
     class AddedBy(models.TextChoices):
         CUSTOMER = 'CUSTOMER', 'Customer'

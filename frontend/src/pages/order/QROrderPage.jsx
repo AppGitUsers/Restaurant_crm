@@ -798,11 +798,11 @@ function CartSheet({ cart, setCart, onClose, onPlace, placing, gstRate, orderTyp
               <input
                 type="tel"
                 inputMode="numeric"
-                maxLength={15}
+                maxLength={10}
                 className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
-                placeholder="Phone number"
+                placeholder="10-digit phone number"
                 value={customerPhone}
-                onChange={e => setCustomerPhone(e.target.value.replace(/\D/g, '').slice(0, 15))}
+                onChange={e => setCustomerPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
               />
               <input
                 type="text"
@@ -984,8 +984,8 @@ export default function QROrderPage() {
   // ── Submit order ────────────────────────────────────────────────────────────
 
   const placeOrder = async () => {
-    if (customerPhone.length > 0 && customerPhone.length < 10) {
-      toast.error('Enter a valid 10-digit phone number, or leave it blank.')
+    if (customerPhone.length > 0 && customerPhone.length !== 10) {
+      toast.error('Phone number must be exactly 10 digits, or leave it blank.')
       return
     }
     setPlacing(true)

@@ -667,7 +667,11 @@ class KitchenBatchListView(APIView):
 
         batches = list(
             TableOrderBatch.objects
-            .exclude(status__in=[TableOrderBatch.Status.SERVED, TableOrderBatch.Status.PENDING_PAYMENT])
+            .exclude(status__in=[
+                TableOrderBatch.Status.SERVED,
+                TableOrderBatch.Status.PENDING_PAYMENT,
+                TableOrderBatch.Status.CANCELLED,
+            ])
             .select_related('session__table', 'billing_order')
             .prefetch_related('items__food_item')
             .order_by('placed_at')
@@ -826,6 +830,14 @@ def _do_cancel_item(item, restore_stock):
     item.cancelled_by_kitchen = True
     item.cancelled_at         = timezone.now()
     item.save(update_fields=['cancelled_by_kitchen', 'cancelled_at'])
+
+    # Auto-cancel the batch when every item in it is now cancelled.
+    # Runs inside the caller's transaction.atomic() so it rolls back together.
+    batch = item.batch
+    if not batch.items.filter(cancelled_by_kitchen=False).exists():
+        batch.status = TableOrderBatch.Status.CANCELLED
+        batch.save(update_fields=['status'])
+        logger.info("Batch auto-cancelled (all items cancelled): batch=%d", batch.id)
 
     item_name = item.food_item.name if item.food_item_id else (item.custom_name or 'Custom Item')
     logger.info("Item cancelled: item=%d name=%s qty=%d batch=%d", item.id, item_name, item.quantity, item.batch_id)

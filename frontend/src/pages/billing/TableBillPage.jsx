@@ -12,6 +12,7 @@ const BATCH_STATUS_STYLE = {
   PENDING:         'bg-amber-100 text-amber-700',
   PREPARING:       'bg-blue-100 text-blue-700',
   SERVED:          'bg-green-100 text-green-700',
+  CANCELLED:       'bg-red-100 text-red-600',
 }
 
 const BATCH_STATUS_LABEL = {
@@ -19,6 +20,7 @@ const BATCH_STATUS_LABEL = {
   PENDING:         'Pending',
   PREPARING:       'Preparing',
   SERVED:          'Served',
+  CANCELLED:       'All Cancelled',
 }
 
 // ── Add Items Modal ──────────────────────────────────────────────────────────
