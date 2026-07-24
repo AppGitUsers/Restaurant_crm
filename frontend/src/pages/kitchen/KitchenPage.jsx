@@ -529,7 +529,11 @@ function ServedOrders() {
                         <div>
                           <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">Table</p>
                           <p className="font-black text-gray-800 text-xl leading-none">T{batch.table_number}</p>
-                          {batch.added_by === 'BILLER' && <p className="text-xs text-gray-400 mt-0.5">Staff added</p>}
+                          {batch.added_by === 'BILLER' && (
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              {batch.placed_by_name ? `by ${batch.placed_by_name}` : 'Staff added'}
+                            </p>
+                          )}
                         </div>
                       )}
                     </td>

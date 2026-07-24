@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { tablesAPI } from '@/api'
 import { parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -607,7 +607,7 @@ function ItemRow({ item, cart, onInc, onDec, readOnly = false }) {
 
 // ─── Cart sheet ───────────────────────────────────────────────────────────────
 
-function CartSheet({ cart, setCart, onClose, onPlace, placing, gstRate, orderType, setOrderType, customerName, setCustomerName, customerPhone, setCustomerPhone }) {
+function CartSheet({ cart, setCart, onClose, onPlace, placing, gstRate, orderType, setOrderType, customerName, setCustomerName, customerPhone, setCustomerPhone, isWaiter }) {
   const [addonTarget, setAddonTarget] = useState(null)
 
   const updateQty = (cartId, newQty) => {
@@ -792,27 +792,29 @@ function CartSheet({ cart, setCart, onClose, onPlace, placing, gstRate, orderTyp
               </div>
             </div>
 
-            {/* Optional customer info */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-500">Your Details <span className="text-gray-400 font-normal">(optional)</span></p>
-              <input
-                type="tel"
-                inputMode="numeric"
-                maxLength={10}
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
-                placeholder="10-digit phone number"
-                value={customerPhone}
-                onChange={e => setCustomerPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-              />
-              <input
-                type="text"
-                maxLength={30}
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
-                placeholder="Your name"
-                value={customerName}
-                onChange={e => setCustomerName(e.target.value)}
-              />
-            </div>
+            {/* Customer info — hidden in waiter mode */}
+            {!isWaiter && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-gray-500">Your Details <span className="text-gray-400 font-normal">(optional)</span></p>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+                  placeholder="10-digit phone number"
+                  value={customerPhone}
+                  onChange={e => setCustomerPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                />
+                <input
+                  type="text"
+                  maxLength={30}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+                  placeholder="Your name"
+                  value={customerName}
+                  onChange={e => setCustomerName(e.target.value)}
+                />
+              </div>
+            )}
 
             <div className="space-y-1 text-sm">
               <div className="flex justify-between text-gray-600"><span>Subtotal</span><span>{rupees(subtotal)}</span></div>
@@ -850,10 +852,22 @@ function CartSheet({ cart, setCart, onClose, onPlace, placing, gstRate, orderTyp
   )
 }
 
+// ─── Waiter auth token helper ─────────────────────────────────────────────────
+
+function getWaiterToken() {
+  try {
+    return JSON.parse(localStorage.getItem('restaurant-crm-auth'))?.state?.token || null
+  } catch {
+    return null
+  }
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function QROrderPage() {
   const { token } = useParams()
+  const [searchParams] = useSearchParams()
+  const isWaiter = searchParams.get('waiter') === '1'
   const { data, loading, error, refetch } = usePublicMenu(token)
 
   const [cart,          setCart]         = useState([])
@@ -893,9 +907,9 @@ export default function QROrderPage() {
   }, [data, token, ssCheckedKey])
   const categories     = data?.categories || []
   const gstRate        = parseFloat(data?.gst_rate ?? 5) / 100
-  // Read-only if another device already claimed this session
-  const isReadOnly     = !!(data?.session_claimed && !getKey(token))
-  const menuOnly       = data?.qr_ordering_enabled === false
+  // Waiters bypass read-only and menu-only restrictions
+  const isReadOnly     = !isWaiter && !!(data?.session_claimed && !getKey(token))
+  const menuOnly       = !isWaiter && data?.qr_ordering_enabled === false
 
   // ── Notify customer when a batch is marked SERVED ────────────────────────────
   useEffect(() => {
@@ -1009,13 +1023,16 @@ export default function QROrderPage() {
       }
     })
     try {
-      const res = await tablesAPI.public.order(token, {
+      const payload = {
         items,
-        session_key:    getKey(token),
+        session_key:    isWaiter ? '' : getKey(token),
         customer_name:  customerName,
         customer_phone: customerPhone,
         order_type:     orderType,
-      })
+      }
+      const res = isWaiter
+        ? await tablesAPI.public.waiterOrder(token, payload, getWaiterToken())
+        : await tablesAPI.public.order(token, payload)
       if (res.data.session_key) saveKey(token, res.data.session_key)
       setSuccessInfo(res.data)
       setCart([])
@@ -1142,14 +1159,18 @@ export default function QROrderPage() {
   return (
     <div className="min-h-screen bg-gray-50 pb-32">
       {/* Header */}
-      <div className="bg-primary-700 text-white px-4 pt-8 pb-4">
+      <div className={`text-white px-4 pt-8 pb-4 ${isWaiter ? 'bg-blue-700' : 'bg-primary-700'}`}>
         <div className="flex items-center gap-2.5 mb-1">
-          <div className="w-9 h-9 rounded-xl bg-gold-300 flex items-center justify-center">
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isWaiter ? 'bg-blue-500' : 'bg-gold-300'}`}>
             <UtensilsCrossed size={20} className="text-white" />
           </div>
           <div>
-            <p className="font-bold text-base leading-tight">Restaurant</p>
-            <p className="text-primary-200 text-xs">Table {data.table_number}</p>
+            <p className="font-bold text-base leading-tight">
+              {isWaiter ? 'Staff Order' : 'Restaurant'}
+            </p>
+            <p className={`text-xs ${isWaiter ? 'text-blue-200' : 'text-primary-200'}`}>
+              Table {data.table_number}{isWaiter ? ' — Waiter Mode' : ''}
+            </p>
           </div>
         </div>
       </div>
@@ -1291,6 +1312,7 @@ export default function QROrderPage() {
           setCustomerName={setCustomerName}
           customerPhone={customerPhone}
           setCustomerPhone={setCustomerPhone}
+          isWaiter={isWaiter}
         />
       )}
 

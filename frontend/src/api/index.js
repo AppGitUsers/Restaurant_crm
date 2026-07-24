@@ -234,6 +234,9 @@ export const tablesAPI = {
   public: {
     menu:             (token)            => publicClient.get(`/public/table/${token}/menu/`),
     order:            (token, data)      => publicClient.post(`/public/table/${token}/order/`, data),
+    waiterOrder:      (token, data, authToken) => publicClient.post(`/public/table/${token}/order/`, data, {
+      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+    }),
     cancelBatch:      (token, batchId)   => publicClient.post(`/public/table/${token}/orders/${batchId}/cancel/`),
     ackNotifications: (token, ids)       => publicClient.post(`/public/table/${token}/notifications/ack/`, { ids }),
     receipt:          (shareToken)       => publicClient.get(`/billing/receipt/${shareToken}/`),

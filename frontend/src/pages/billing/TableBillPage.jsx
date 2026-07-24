@@ -793,7 +793,9 @@ export default function TableBillPage() {
                   {BATCH_STATUS_LABEL[batch.status] || batch.status}
                 </span>
                 {batch.added_by === 'BILLER' && (
-                  <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Biller</span>
+                  <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                    {batch.placed_by_name ? batch.placed_by_name : 'Biller'}
+                  </span>
                 )}
                 {batch.status === 'PENDING_PAYMENT' && batch.added_by !== 'BILLER' && (
                   <span className="text-xs text-purple-500 bg-purple-50 px-2 py-0.5 rounded-full">Customer</span>

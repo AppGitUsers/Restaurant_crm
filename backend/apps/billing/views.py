@@ -106,6 +106,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 batch = TableOrderBatch.objects.create(
                     billing_order=order,
                     added_by=TableOrderBatch.AddedBy.BILLER,
+                    placed_by=request.user,
                     notes=order.notes or '',
                 )
                 for bi in order.items.select_related('food_item').all():

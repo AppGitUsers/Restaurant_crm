@@ -139,9 +139,15 @@ export default function TablesGridPage() {
                     <span className="text-2xl font-extrabold text-green-600">{table.number}</span>
                     <span className="text-xs font-semibold text-green-500">Open</span>
                     <button
+                      onClick={e => { e.stopPropagation(); window.open(`/order/${table.qr_token}?waiter=1`, '_blank') }}
+                      className="mt-1 text-[10px] font-bold text-white bg-green-500 rounded-md px-2 py-1 hover:bg-green-600 transition-colors"
+                    >
+                      Order
+                    </button>
+                    <button
                       onClick={() => openMutation.mutate(table.id)}
                       disabled={toggling}
-                      className="mt-1 text-[10px] text-green-600 underline hover:text-green-800"
+                      className="text-[10px] text-green-600 underline hover:text-green-800"
                     >
                       {toggling ? '…' : 'Close'}
                     </button>
@@ -191,6 +197,12 @@ export default function TablesGridPage() {
                 <span className="text-xs text-primary-400 flex items-center gap-0.5">
                   <Users size={10} /> {session.item_count} items
                 </span>
+                <button
+                  onClick={e => { e.stopPropagation(); window.open(`/order/${table.qr_token}?waiter=1`, '_blank') }}
+                  className="mt-0.5 text-[10px] font-bold text-white bg-primary-600 rounded-md px-2 py-0.5 hover:bg-primary-700 transition-colors"
+                >
+                  + Order
+                </button>
               </div>
             )
           })}

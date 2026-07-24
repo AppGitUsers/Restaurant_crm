@@ -106,17 +106,19 @@ class TableOrderItemSerializer(serializers.ModelSerializer):
 
 
 class TableOrderBatchSerializer(serializers.ModelSerializer):
-    items        = TableOrderItemSerializer(many=True, read_only=True)
-    table_number = serializers.SerializerMethodField()
-    session_id   = serializers.SerializerMethodField()
-    order_number = serializers.SerializerMethodField()
-    is_counter   = serializers.SerializerMethodField()
-    order_type   = serializers.SerializerMethodField()
+    items          = TableOrderItemSerializer(many=True, read_only=True)
+    table_number   = serializers.SerializerMethodField()
+    session_id     = serializers.SerializerMethodField()
+    order_number   = serializers.SerializerMethodField()
+    is_counter     = serializers.SerializerMethodField()
+    order_type     = serializers.SerializerMethodField()
+    placed_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model  = TableOrderBatch
         fields = ['id', 'table_number', 'session_id', 'order_number', 'is_counter',
-                  'order_type', 'status', 'added_by', 'placed_at', 'served_at', 'notes', 'items']
+                  'order_type', 'status', 'added_by', 'placed_by_name',
+                  'placed_at', 'served_at', 'notes', 'items']
 
     def get_table_number(self, obj):
         return obj.session.table.number if obj.session_id else None
@@ -136,6 +138,11 @@ class TableOrderBatchSerializer(serializers.ModelSerializer):
         if obj.billing_order_id:
             return obj.billing_order.order_type
         return obj.order_type
+
+    def get_placed_by_name(self, obj):
+        if obj.placed_by_id:
+            return obj.placed_by.get_full_name() or obj.placed_by.username
+        return None
 
 
 class TableSessionSerializer(serializers.ModelSerializer):

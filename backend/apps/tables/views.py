@@ -158,21 +158,38 @@ class PublicOrderSubmitView(APIView):
     def post(self, request, qr_token):
         table = get_object_or_404(Table, qr_token=qr_token, is_active=True)
 
+        # ── Optional staff authentication (waiter mode) ────────────────────────
+        # A biller can send an Authorization header to place orders directly to
+        # kitchen, bypassing QR-ordering-disabled check and session-key claim.
+        placed_by = None
+        is_waiter = False
+        try:
+            from rest_framework_simplejwt.authentication import JWTAuthentication
+            result = JWTAuthentication().authenticate(request)
+            if result is not None:
+                auth_user, _ = result
+                if hasattr(auth_user, 'role') and auth_user.role in ('BILLER', 'ADMIN'):
+                    placed_by = auth_user
+                    is_waiter = True
+        except Exception:
+            pass
+
         if not table.is_accepting_orders:
             return Response(
                 {'error': 'This table is not currently open for orders. Please ask staff to open the table.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        try:
-            from apps.settings_app.models import RestaurantSettings
-            if not RestaurantSettings.get_settings().qr_ordering_enabled:
-                return Response(
-                    {'error': 'Online ordering is currently disabled. Please ask staff to place your order.'},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-        except Exception:
-            pass
+        if not is_waiter:
+            try:
+                from apps.settings_app.models import RestaurantSettings
+                if not RestaurantSettings.get_settings().qr_ordering_enabled:
+                    return Response(
+                        {'error': 'Online ordering is currently disabled. Please ask staff to place your order.'},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+            except Exception:
+                pass
 
         serializer = OrderSubmitSerializer(data=request.data)
         if not serializer.is_valid():
@@ -238,16 +255,19 @@ class PublicOrderSubmitView(APIView):
                                    .get(table=table, status=TableSession.Status.OPEN))
 
                 # ── Session key: claim or validate ────────────────────────────
-                if session.session_key:
-                    if provided_key != session.session_key:
-                        return Response(
-                            {'error': 'This table session is already claimed by another device.'},
-                            status=status.HTTP_403_FORBIDDEN,
-                        )
-                else:
-                    import secrets
-                    session.session_key = secrets.token_urlsafe(16)
-                    session.save(update_fields=['session_key'])
+                # Waiters (authenticated staff) bypass the session key check —
+                # they can always add to any open table.
+                if not is_waiter:
+                    if session.session_key:
+                        if provided_key != session.session_key:
+                            return Response(
+                                {'error': 'This table session is already claimed by another device.'},
+                                status=status.HTTP_403_FORBIDDEN,
+                            )
+                    else:
+                        import secrets
+                        session.session_key = secrets.token_urlsafe(16)
+                        session.save(update_fields=['session_key'])
 
                 # ── Update session customer info ───────────────────────────────
                 sess_update = []
@@ -353,10 +373,11 @@ class PublicOrderSubmitView(APIView):
 
                 batch = TableOrderBatch.objects.create(
                     session=session,
-                    added_by=TableOrderBatch.AddedBy.CUSTOMER,
+                    added_by=TableOrderBatch.AddedBy.BILLER if is_waiter else TableOrderBatch.AddedBy.CUSTOMER,
+                    placed_by=placed_by,
                     order_type=order_type,
                     notes=batch_notes,
-                    status=TableOrderBatch.Status.PENDING_PAYMENT,
+                    status=TableOrderBatch.Status.PENDING if is_waiter else TableOrderBatch.Status.PENDING_PAYMENT,
                 )
 
                 for d in items_data:
@@ -660,7 +681,7 @@ class KitchenBatchListView(APIView):
                 filter_date = timezone.localdate()
             batches = (TableOrderBatch.objects
                        .filter(status=TableOrderBatch.Status.SERVED, placed_at__date=filter_date)
-                       .select_related('session__table', 'billing_order')
+                       .select_related('session__table', 'billing_order', 'placed_by')
                        .prefetch_related('items__food_item')
                        .order_by('-placed_at'))
             return Response({'batches': TableOrderBatchSerializer(batches, many=True).data})
@@ -672,7 +693,7 @@ class KitchenBatchListView(APIView):
                 TableOrderBatch.Status.PENDING_PAYMENT,
                 TableOrderBatch.Status.CANCELLED,
             ])
-            .select_related('session__table', 'billing_order')
+            .select_related('session__table', 'billing_order', 'placed_by')
             .prefetch_related('items__food_item')
             .order_by('placed_at')
         )
@@ -1078,8 +1099,12 @@ class TableSessionDetailView(APIView):
     permission_classes = [IsAdminOrBiller]
 
     def get(self, request, session_id):
+        from django.db.models import Prefetch as _Prefetch
+        batch_qs = (TableOrderBatch.objects
+                    .select_related('placed_by')
+                    .prefetch_related('items__food_item'))
         session = get_object_or_404(
-            TableSession.objects.prefetch_related('batches__items__food_item'),
+            TableSession.objects.prefetch_related(_Prefetch('batches', queryset=batch_qs)),
             pk=session_id,
         )
         return Response(TableSessionSerializer(session).data)
@@ -1176,6 +1201,7 @@ class TableSessionAddBatchView(APIView):
                 batch = TableOrderBatch.objects.create(
                     session=session,
                     added_by=TableOrderBatch.AddedBy.BILLER,
+                    placed_by=request.user,
                     notes=batch_notes,
                     status=TableOrderBatch.Status.PENDING,
                 )
