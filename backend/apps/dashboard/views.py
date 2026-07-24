@@ -49,12 +49,14 @@ class DashboardSummaryView(APIView):
         total_customers    = Customer.objects.count()
         high_val_customers = Customer.objects.filter(frequency_tag='HIGH').count()
 
-        # ── Top selling items (all time) ─────────────────────────
+        # ── Top selling items (last 30 days) ─────────────────────
         from apps.tables.models import TableOrderItem
         from django.db.models import Q
+        thirty_days_ago = today - datetime.timedelta(days=30)
         top_items = (TableOrderItem.objects
                      .filter(
                          cancelled_by_kitchen=False,
+                         batch__placed_at__date__gte=thirty_days_ago,
                      )
                      .filter(
                          Q(batch__billing_order__status='PAID') |
@@ -95,7 +97,6 @@ class DashboardSummaryView(APIView):
         )
 
         # ── Attendance top performers ─────────────────────────────
-        thirty_days_ago = today - datetime.timedelta(days=30)
         top_attendance = (Attendance.objects
                           .filter(date__gte=thirty_days_ago, status='PRESENT')
                           .values('employee__name')
