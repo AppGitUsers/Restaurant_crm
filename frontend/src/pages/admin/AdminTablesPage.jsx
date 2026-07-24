@@ -3,8 +3,9 @@ import { tablesAPI } from '@/api'
 import QRCode from 'qrcode'
 import {
   Plus, Pencil, Trash2, QrCode, Download, Printer,
-  Loader2, AlertTriangle, CheckCircle2, X, TableProperties,
+  Loader2, AlertTriangle, CheckCircle2, X, TableProperties, LayoutGrid, List,
 } from 'lucide-react'
+import TablesGridPage from '@/pages/billing/TablesGridPage'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function qrUrl(token) {
@@ -195,6 +196,7 @@ export default function AdminTablesPage() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting,    setDeleting]    = useState(false)
   const [toast,       setToast]       = useState(null)
+  const [showLive,    setShowLive]    = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -227,6 +229,29 @@ export default function AdminTablesPage() {
     }
   }
 
+  if (showLive) {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="flex items-center gap-3 px-4 pt-4 pb-2 border-b border-gray-100">
+          <button
+            onClick={() => setShowLive(false)}
+            className="flex items-center gap-2 text-sm font-semibold text-primary-600
+                       hover:text-primary-800 transition-colors"
+          >
+            <List size={16} /> Back to Table List
+          </button>
+          <span className="text-gray-300">|</span>
+          <span className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+            <LayoutGrid size={15} className="text-primary-500" /> Live Tables
+          </span>
+        </div>
+        <div className="flex-1 overflow-hidden">
+          <TablesGridPage />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-4xl mx-auto">
       {/* Header */}
@@ -240,12 +265,20 @@ export default function AdminTablesPage() {
             <p className="text-sm text-gray-500">{tables.length} table{tables.length !== 1 ? 's' : ''} configured</p>
           </div>
         </div>
-        <button
-          onClick={() => setFormTable(null)}
-          className="btn-primary flex items-center gap-2 px-4 py-2.5"
-        >
-          <Plus size={17} /> Add Table
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowLive(true)}
+            className="flex items-center gap-2 btn-secondary px-4 py-2.5"
+          >
+            <LayoutGrid size={16} /> Live Tables
+          </button>
+          <button
+            onClick={() => setFormTable(null)}
+            className="btn-primary flex items-center gap-2 px-4 py-2.5"
+          >
+            <Plus size={17} /> Add Table
+          </button>
+        </div>
       </div>
 
       {/* Content */}
