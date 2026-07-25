@@ -24,6 +24,7 @@ class FoodType(models.Model):
     allow_addons    = models.BooleanField(default=False)
     addons          = models.ManyToManyField('Addon', blank=True, related_name='food_types')
     is_customizable = models.BooleanField(default=False)
+    kitchen         = models.ForeignKey('tables.Kitchen', on_delete=models.SET_NULL, null=True, blank=True, related_name='food_types')
     created_at      = models.DateTimeField(auto_now_add=True)
 
     class Meta:

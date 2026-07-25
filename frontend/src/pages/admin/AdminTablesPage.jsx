@@ -3,7 +3,7 @@ import { tablesAPI } from '@/api'
 import QRCode from 'qrcode'
 import {
   Plus, Pencil, Trash2, QrCode, Download, Printer,
-  Loader2, AlertTriangle, CheckCircle2, X, TableProperties, LayoutGrid, List,
+  Loader2, AlertTriangle, CheckCircle2, X, TableProperties, LayoutGrid, List, ChefHat,
 } from 'lucide-react'
 import TablesGridPage from '@/pages/billing/TablesGridPage'
 
@@ -186,8 +186,218 @@ function TableFormModal({ table, onClose, onSaved }) {
   )
 }
 
+// ── Kitchen Form Modal ────────────────────────────────────────────────────────
+function KitchenFormModal({ kitchen, onClose, onSaved }) {
+  const [name,   setName]   = useState(kitchen?.name ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error,  setError]  = useState(null)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      if (kitchen) {
+        await tablesAPI.admin.kitchens.update(kitchen.id, { name })
+      } else {
+        await tablesAPI.admin.kitchens.create({ name })
+      }
+      onSaved()
+      onClose()
+    } catch (err) {
+      const msg = err?.response?.data?.name?.[0]
+             || err?.response?.data?.detail
+             || 'Failed to save kitchen.'
+      setError(msg)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-gray-800 text-lg">{kitchen ? 'Edit Kitchen' : 'Add Kitchen'}</h3>
+          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100">
+            <X size={18} className="text-gray-500" />
+          </button>
+        </div>
+        {error && (
+          <div className="flex items-center gap-2 bg-red-50 text-red-700 rounded-lg px-3 py-2 text-sm">
+            <AlertTriangle size={15} /> {error}
+          </div>
+        )}
+        <form onSubmit={submit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Kitchen Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              required
+              className="input w-full"
+              placeholder="e.g. Main Kitchen, Waffles Station"
+            />
+          </div>
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose} className="btn-secondary flex-1 py-2.5">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-primary flex-1 py-2.5 flex items-center justify-center gap-2">
+              {saving && <Loader2 size={15} className="animate-spin" />}
+              {kitchen ? 'Save Changes' : 'Add Kitchen'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Kitchen Section ───────────────────────────────────────────────────────────
+function KitchensSection() {
+  const [kitchens,      setKitchens]      = useState([])
+  const [loading,       setLoading]       = useState(true)
+  const [formKitchen,   setFormKitchen]   = useState(undefined)
+  const [deleteTarget,  setDeleteTarget]  = useState(null)
+  const [deleting,      setDeleting]      = useState(false)
+  const [toast,         setToast]         = useState(null)
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type })
+    setTimeout(() => setToast(null), 3000)
+  }
+
+  const load = () => {
+    setLoading(true)
+    tablesAPI.admin.kitchens.list()
+      .then(r => setKitchens(r.data))
+      .catch(() => showToast('Failed to load kitchens.', 'error'))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { load() }, [])
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    try {
+      await tablesAPI.admin.kitchens.delete(deleteTarget.id)
+      setDeleteTarget(null)
+      showToast(`Kitchen "${deleteTarget.name}" deleted.`)
+      load()
+    } catch {
+      showToast('Cannot delete this kitchen — it may still be in use.', 'error')
+      setDeleteTarget(null)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center">
+            <ChefHat size={20} className="text-orange-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">Kitchens</h2>
+            <p className="text-sm text-gray-500">{kitchens.length} kitchen station{kitchens.length !== 1 ? 's' : ''}</p>
+          </div>
+        </div>
+        <button onClick={() => setFormKitchen(null)} className="btn-primary flex items-center gap-2 px-4 py-2.5">
+          <Plus size={17} /> Add Kitchen
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 size={28} className="animate-spin text-primary-400" />
+        </div>
+      ) : kitchens.length === 0 ? (
+        <div className="flex flex-col items-center py-12 gap-3 text-gray-400">
+          <ChefHat size={40} />
+          <p className="text-sm">No kitchens configured. Add your first kitchen station.</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="text-left px-5 py-3 font-semibold text-gray-600">Kitchen Name</th>
+                <th className="text-right px-5 py-3 font-semibold text-gray-600">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {kitchens.map(k => (
+                <tr key={k.id} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <ChefHat size={15} className="text-orange-400" />
+                      <span className="font-semibold text-gray-800">{k.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center justify-end gap-2">
+                      <button onClick={() => setFormKitchen(k)} title="Edit"
+                        className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors">
+                        <Pencil size={17} />
+                      </button>
+                      <button onClick={() => setDeleteTarget(k)} title="Delete"
+                        className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 transition-colors">
+                        <Trash2 size={17} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {formKitchen !== undefined && (
+        <KitchenFormModal
+          kitchen={formKitchen}
+          onClose={() => setFormKitchen(undefined)}
+          onSaved={() => { load(); showToast(formKitchen ? 'Kitchen updated.' : 'Kitchen added.') }}
+        />
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="font-bold text-gray-800 text-lg">Delete "{deleteTarget.name}"?</h3>
+            <p className="text-sm text-gray-500">
+              This cannot be undone. Kitchens with assigned food types cannot be deleted.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteTarget(null)} className="btn-secondary flex-1 py-2.5">Cancel</button>
+              <button onClick={handleDelete} disabled={deleting}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 text-white font-semibold hover:bg-red-600
+                           disabled:opacity-50 flex items-center justify-center gap-2">
+                {deleting && <Loader2 size={15} className="animate-spin" />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2
+                         px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white
+                         ${toast.type === 'error' ? 'bg-red-500' : 'bg-green-500'}`}>
+          {toast.type === 'error' ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
+          {toast.msg}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function AdminTablesPage() {
+  const [section,     setSection]     = useState('tables')  // 'tables' | 'kitchens'
   const [tables,      setTables]      = useState([])
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState(null)
@@ -254,6 +464,23 @@ export default function AdminTablesPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-4xl mx-auto">
+      {/* Section tabs */}
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+        {[
+          { id: 'tables',   label: 'Tables',   icon: <TableProperties size={14} /> },
+          { id: 'kitchens', label: 'Kitchens', icon: <ChefHat size={14} /> },
+        ].map(s => (
+          <button key={s.id} onClick={() => setSection(s.id)}
+            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold transition-all
+              ${section === s.id ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+            {s.icon} {s.label}
+          </button>
+        ))}
+      </div>
+
+      {section === 'kitchens' && <KitchensSection />}
+
+      {section === 'tables' && <>
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -409,6 +636,7 @@ export default function AdminTablesPage() {
           {toast.msg}
         </div>
       )}
+      </>}
     </div>
   )
 }

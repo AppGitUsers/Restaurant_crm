@@ -4,17 +4,17 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.throttling import AnonRateThrottle
 from django.shortcuts import get_object_or_404
-from django.db import transaction, IntegrityError
+from django.db import models, transaction, IntegrityError
 from django.utils import timezone
 from decimal import Decimal
 from datetime import datetime, time as _time
 
 from apps.accounts.permissions import IsAdmin, IsAdminOrBiller, IsAdminOrBillerOrKitchen
-from .models import Table, TableSession, TableOrderBatch, TableOrderItem, KitchenNotification
+from .models import Kitchen, Table, TableSession, TableOrderBatch, TableOrderItem, KitchenNotification
 from .serializers import (
     PublicMenuItemSerializer, OrderSubmitSerializer,
     TableSerializer, TableSessionSerializer, TableOrderBatchSerializer,
-    TableAdminSerializer,
+    TableAdminSerializer, KitchenSerializer,
 )
 
 import logging
@@ -664,14 +664,40 @@ class _CancelError(Exception):
 
 # ── Kitchen: authenticated display + status update endpoints ────────────────
 
+def _update_batch_status(batch):
+    """Derive batch status from its item statuses after an item-level change."""
+    active_statuses = list(
+        batch.items.filter(cancelled_by_kitchen=False).values_list('status', flat=True)
+    )
+    if not active_statuses:
+        return
+    if all(s == TableOrderItem.ItemStatus.SERVED for s in active_statuses):
+        new_batch_status = TableOrderBatch.Status.SERVED
+    elif all(s == TableOrderItem.ItemStatus.PENDING for s in active_statuses):
+        new_batch_status = TableOrderBatch.Status.PENDING
+    else:
+        new_batch_status = TableOrderBatch.Status.PREPARING
+    if new_batch_status == batch.status:
+        return
+    update_fields = ['status']
+    if new_batch_status == TableOrderBatch.Status.SERVED:
+        batch.served_at = timezone.now()
+        update_fields.append('served_at')
+    batch.status = new_batch_status
+    batch.save(update_fields=update_fields)
+
+
 class KitchenBatchListView(APIView):
     """
     Active batches for the kitchen display (oldest first).
     Pass ?served=true to fetch the most recent 60 served batches instead.
+    Kitchen users see only their kitchen's items; admin/biller/manager see all.
     """
     permission_classes = [IsAdminOrBillerOrKitchen]
 
     def get(self, request):
+        user_kitchen_id = getattr(request.user, 'kitchen_id', None)
+
         if request.query_params.get('served') == 'true':
             from datetime import date as _date
             date_str = request.query_params.get('date', '')
@@ -679,13 +705,23 @@ class KitchenBatchListView(APIView):
                 filter_date = _date.fromisoformat(date_str) if date_str else timezone.localdate()
             except ValueError:
                 filter_date = timezone.localdate()
+            from django.db.models import Prefetch
+            item_qs = TableOrderItem.objects.filter(food_item__food_type__kitchen_id=user_kitchen_id) \
+                if user_kitchen_id else TableOrderItem.objects.all()
             batches = (TableOrderBatch.objects
                        .filter(status=TableOrderBatch.Status.SERVED, placed_at__date=filter_date)
                        .select_related('session__table', 'billing_order', 'placed_by')
-                       .prefetch_related('items__food_item')
+                       .prefetch_related(Prefetch('items', queryset=item_qs.select_related('food_item')))
                        .order_by('-placed_at'))
             return Response({'batches': TableOrderBatchSerializer(batches, many=True).data})
 
+        from django.db.models import Prefetch
+        item_qs = (
+            TableOrderItem.objects
+            .filter(food_item__food_type__kitchen_id=user_kitchen_id)
+            if user_kitchen_id
+            else TableOrderItem.objects.all()
+        )
         batches = list(
             TableOrderBatch.objects
             .exclude(status__in=[
@@ -694,47 +730,88 @@ class KitchenBatchListView(APIView):
                 TableOrderBatch.Status.CANCELLED,
             ])
             .select_related('session__table', 'billing_order', 'placed_by')
-            .prefetch_related('items__food_item')
+            .prefetch_related(Prefetch('items', queryset=item_qs.select_related('food_item')))
             .order_by('placed_at')
         )
+
+        # Drop batch from this kitchen's view once all their items are served or cancelled
+        if user_kitchen_id:
+            batches = [
+                b for b in batches
+                if any(
+                    not i.cancelled_by_kitchen and i.status != TableOrderItem.ItemStatus.SERVED
+                    for i in b.items.all()
+                )
+            ]
+
+        # Per-kitchen pending/preparing counts from item statuses
+        pending_count   = 0
+        preparing_count = 0
+        for b in batches:
+            item_statuses = [i.status for i in b.items.all() if not i.cancelled_by_kitchen]
+            if item_statuses:
+                if all(s == TableOrderItem.ItemStatus.PENDING for s in item_statuses):
+                    pending_count += 1
+                elif any(s == TableOrderItem.ItemStatus.PREPARING for s in item_statuses):
+                    preparing_count += 1
+
         data = TableOrderBatchSerializer(batches, many=True).data
         return Response({
-            'pending_count':   sum(1 for b in batches if b.status == TableOrderBatch.Status.PENDING),
-            'preparing_count': sum(1 for b in batches if b.status == TableOrderBatch.Status.PREPARING),
+            'pending_count':   pending_count,
+            'preparing_count': preparing_count,
             'batches':         data,
         })
 
 
 class KitchenBatchUpdateView(APIView):
-    """Kitchen marks a batch PREPARING or SERVED."""
+    """Kitchen advances items in a batch (PENDING→PREPARING or PREPARING→SERVED)."""
     permission_classes = [IsAdminOrBillerOrKitchen]
 
-    # Valid forward-only transitions
-    _TRANSITIONS = {
-        TableOrderBatch.Status.PENDING:   TableOrderBatch.Status.PREPARING,
-        TableOrderBatch.Status.PREPARING: TableOrderBatch.Status.SERVED,
+    # Valid forward-only item transitions
+    _ITEM_TRANSITIONS = {
+        TableOrderItem.ItemStatus.PENDING:   TableOrderItem.ItemStatus.PREPARING,
+        TableOrderItem.ItemStatus.PREPARING: TableOrderItem.ItemStatus.SERVED,
     }
 
     def patch(self, request, batch_id):
-        batch      = get_object_or_404(TableOrderBatch, pk=batch_id)
-        new_status = request.data.get('status')
-        expected   = self._TRANSITIONS.get(batch.status)
+        batch           = get_object_or_404(TableOrderBatch, pk=batch_id)
+        new_status      = request.data.get('status')
+        user_kitchen_id = getattr(request.user, 'kitchen_id', None)
 
-        if new_status != expected:
-            return Response(
-                {'error': f"Cannot move from {batch.status} to {new_status}. "
-                          f"Expected next status: {expected}"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        with transaction.atomic():
+            # Select the items this kitchen should advance
+            item_qs = batch.items.filter(cancelled_by_kitchen=False)
+            if user_kitchen_id:
+                item_qs = item_qs.filter(food_item__food_type__kitchen_id=user_kitchen_id)
 
-        batch.status = new_status
-        update_fields = ['status']
-        if new_status == TableOrderBatch.Status.SERVED:
-            batch.served_at = timezone.now()
-            update_fields.append('served_at')
-        batch.save(update_fields=update_fields)
-        logger.info("Kitchen batch status updated: user=%s batch=%d %s → %s",
-                    request.user, batch.id, expected, new_status)
+            # Determine what item-level transition to apply based on requested batch status
+            if new_status == TableOrderBatch.Status.PREPARING:
+                target_item_status = TableOrderItem.ItemStatus.PREPARING
+                from_item_status   = TableOrderItem.ItemStatus.PENDING
+            elif new_status == TableOrderBatch.Status.SERVED:
+                target_item_status = TableOrderItem.ItemStatus.SERVED
+                from_item_status   = TableOrderItem.ItemStatus.PREPARING
+            else:
+                return Response(
+                    {'error': f"Invalid target status: {new_status}. Expected PREPARING or SERVED."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            items_to_advance = list(item_qs.filter(status=from_item_status))
+            if not items_to_advance:
+                return Response(
+                    {'error': f"No items in {from_item_status} state to advance."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            item_ids = [i.id for i in items_to_advance]
+            TableOrderItem.objects.filter(id__in=item_ids).update(status=target_item_status)
+            batch.refresh_from_db()
+            _update_batch_status(batch)
+
+        logger.info("Kitchen batch items advanced: user=%s batch=%d → item_status=%s count=%d",
+                    request.user, batch.id, target_item_status, len(item_ids))
+        batch.refresh_from_db()
         return Response(TableOrderBatchSerializer(batch).data)
 
 
@@ -852,13 +929,15 @@ def _do_cancel_item(item, restore_stock):
     item.cancelled_at         = timezone.now()
     item.save(update_fields=['cancelled_by_kitchen', 'cancelled_at'])
 
-    # Auto-cancel the batch when every item in it is now cancelled.
-    # Runs inside the caller's transaction.atomic() so it rolls back together.
+    # Auto-cancel the batch when every item in it is now cancelled;
+    # otherwise re-derive batch status from remaining item statuses.
     batch = item.batch
     if not batch.items.filter(cancelled_by_kitchen=False).exists():
         batch.status = TableOrderBatch.Status.CANCELLED
         batch.save(update_fields=['status'])
         logger.info("Batch auto-cancelled (all items cancelled): batch=%d", batch.id)
+    else:
+        _update_batch_status(batch)
 
     item_name = item.food_item.name if item.food_item_id else (item.custom_name or 'Custom Item')
     logger.info("Item cancelled: item=%d name=%s qty=%d batch=%d", item.id, item_name, item.quantity, item.batch_id)
@@ -921,8 +1000,9 @@ class KitchenCancelItemView(APIView):
     permission_classes = [IsAdminOrBillerOrKitchen]
 
     def post(self, request, item_id):
-        pin           = request.data.get('pin', '')
-        restore_stock = bool(request.data.get('restore_stock', False))
+        pin             = request.data.get('pin', '')
+        restore_stock   = bool(request.data.get('restore_stock', False))
+        user_kitchen_id = getattr(request.user, 'kitchen_id', None)
 
         if not _validate_kitchen_pin(pin, request.user):
             logger.warning("Kitchen cancel: wrong PIN by user=%s for item=%s", request.user, item_id)
@@ -934,6 +1014,8 @@ class KitchenCancelItemView(APIView):
                     item = _get_locked_item(item_id)
                 except TableOrderItem.DoesNotExist:
                     return Response({'error': 'Item not found.'}, status=status.HTTP_404_NOT_FOUND)
+                if user_kitchen_id and item.food_item and item.food_item.food_type.kitchen_id != user_kitchen_id:
+                    return Response({'error': 'This item belongs to a different kitchen.'}, status=status.HTTP_403_FORBIDDEN)
                 _do_cancel_item(item, restore_stock)
         except _CancelError as e:
             return Response({'error': e.message}, status=e.http_status)
@@ -950,9 +1032,10 @@ class KitchenReduceItemView(APIView):
     permission_classes = [IsAdminOrBillerOrKitchen]
 
     def post(self, request, item_id):
-        pin           = request.data.get('pin', '')
-        new_quantity  = request.data.get('new_quantity')
-        restore_stock = bool(request.data.get('restore_stock', False))
+        pin             = request.data.get('pin', '')
+        new_quantity    = request.data.get('new_quantity')
+        restore_stock   = bool(request.data.get('restore_stock', False))
+        user_kitchen_id = getattr(request.user, 'kitchen_id', None)
 
         if not _validate_kitchen_pin(pin, request.user):
             logger.warning("Kitchen reduce: wrong PIN by user=%s for item=%s", request.user, item_id)
@@ -971,6 +1054,8 @@ class KitchenReduceItemView(APIView):
                     item = _get_locked_item(item_id)
                 except TableOrderItem.DoesNotExist:
                     return Response({'error': 'Item not found.'}, status=status.HTTP_404_NOT_FOUND)
+                if user_kitchen_id and item.food_item and item.food_item.food_type.kitchen_id != user_kitchen_id:
+                    return Response({'error': 'This item belongs to a different kitchen.'}, status=status.HTTP_403_FORBIDDEN)
                 _do_reduce_item(item, new_quantity, restore_stock)
         except _CancelError as e:
             return Response({'error': e.message}, status=e.http_status)
@@ -1630,3 +1715,39 @@ class TodaySessionsView(APIView):
             'sessions':       result_sessions,
             'counter_orders': [_serialize_counter(o) for o in counter_orders],
         })
+
+
+# ── Kitchen admin: CRUD for kitchen stations ────────────────────────────────
+
+class KitchenAdminListCreateView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        kitchens = Kitchen.objects.all()
+        return Response(KitchenSerializer(kitchens, many=True).data)
+
+    def post(self, request):
+        serializer = KitchenSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        kitchen = serializer.save()
+        logger.info("Kitchen created: admin=%s name=%s", request.user, kitchen.name)
+        return Response(KitchenSerializer(kitchen).data, status=status.HTTP_201_CREATED)
+
+
+class KitchenAdminDetailView(APIView):
+    permission_classes = [IsAdmin]
+
+    def patch(self, request, kitchen_id):
+        kitchen    = get_object_or_404(Kitchen, pk=kitchen_id)
+        serializer = KitchenSerializer(kitchen, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        logger.info("Kitchen updated: admin=%s id=%d name=%s", request.user, kitchen_id, kitchen.name)
+        return Response(KitchenSerializer(kitchen).data)
+
+    def delete(self, request, kitchen_id):
+        kitchen = get_object_or_404(Kitchen, pk=kitchen_id)
+        name    = kitchen.name
+        kitchen.delete()
+        logger.info("Kitchen deleted: admin=%s id=%d name=%s", request.user, kitchen_id, name)
+        return Response(status=status.HTTP_204_NO_CONTENT)

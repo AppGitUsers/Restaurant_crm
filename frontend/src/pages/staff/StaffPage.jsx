@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { staffAPI, authAPI } from '@/api'
+import { staffAPI, authAPI, tablesAPI } from '@/api'
 import { PageLoader, Modal, SearchBar, StatusBadge, ConfirmDialog, Field, Empty } from '@/components/ui'
 import toast from 'react-hot-toast'
 import {
@@ -960,11 +960,12 @@ function CredentialsTab() {
   const [del, setDel]         = useState(null)
   const [showPwd, setShowPwd] = useState(false)
   const [confirmPwd, setConfirmPwd] = useState('')
-  const emptyForm = { username: '', password: '', role: 'BILLER', linked_employee: '', is_active: true }
+  const emptyForm = { username: '', password: '', role: 'BILLER', linked_employee: '', kitchen: '', is_active: true }
   const [form, setForm] = useState(emptyForm)
 
   const { data: allUsers, isLoading } = useQuery({ queryKey: ['staff-users'], queryFn: () => authAPI.users.list().then(r => r.data.results || r.data) })
   const { data: emps }                = useQuery({ queryKey: ['employees'], queryFn: () => staffAPI.employees.list().then(r => r.data.results || r.data) })
+  const { data: kitchens }            = useQuery({ queryKey: ['kitchens-list'], queryFn: () => tablesAPI.admin.kitchens.list().then(r => r.data) })
   const staffUsers = (allUsers || []).filter(u => u.role === 'BILLER' || u.role === 'KITCHEN' || u.role === 'MANAGER')
 
   const save = useMutation({
@@ -978,12 +979,12 @@ function CredentialsTab() {
   })
 
   const openCreate = () => { setSel(null); setForm(emptyForm); setConfirmPwd(''); setShowPwd(false); setModal(true) }
-  const openEdit   = u => { setSel(u); setForm({ username: u.username, password: '', role: u.role, linked_employee: u.linked_employee || '', is_active: u.is_active }); setConfirmPwd(''); setShowPwd(false); setModal(true) }
+  const openEdit   = u => { setSel(u); setForm({ username: u.username, password: '', role: u.role, linked_employee: u.linked_employee || '', kitchen: u.kitchen || '', is_active: u.is_active }); setConfirmPwd(''); setShowPwd(false); setModal(true) }
 
   const handleSubmit = () => {
     if (!sel && form.password !== confirmPwd) { toast.error('Passwords do not match'); return }
     if (!sel && form.password.length < 6) { toast.error('Password must be at least 6 characters'); return }
-    const payload = { username: form.username, role: form.role, linked_employee: form.linked_employee || null, is_active: form.is_active }
+    const payload = { username: form.username, role: form.role, linked_employee: form.linked_employee || null, is_active: form.is_active, kitchen: (form.role === 'KITCHEN' && form.kitchen) ? form.kitchen : null }
     if (form.password) payload.password = form.password
     save.mutate(payload)
   }
@@ -1061,6 +1062,14 @@ function CredentialsTab() {
               <option value="KITCHEN">Kitchen</option>
             </select>
           </Field>
+          {form.role === 'KITCHEN' && (
+            <Field label="Assign Kitchen Station">
+              <select className="select" value={form.kitchen} onChange={e => setForm({ ...form, kitchen: e.target.value })}>
+                <option value="">— None (sees all kitchens) —</option>
+                {(kitchens || []).map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
+              </select>
+            </Field>
+          )}
           <Field label="Link to Employee (optional)">
             <select className="select" value={form.linked_employee} onChange={e => setForm({ ...form, linked_employee: e.target.value })}>
               <option value="">— None —</option>

@@ -204,6 +204,12 @@ export const tablesAPI = {
     create: (data)          => client.post('/admin/tables/', data),
     update: (id, data)      => client.patch(`/admin/tables/${id}/`, data),
     delete: (id)            => client.delete(`/admin/tables/${id}/`),
+    kitchens: {
+      list:   ()             => client.get('/admin/kitchens/'),
+      create: (data)         => client.post('/admin/kitchens/', data),
+      update: (id, data)     => client.patch(`/admin/kitchens/${id}/`, data),
+      delete: (id)           => client.delete(`/admin/kitchens/${id}/`),
+    },
   },
 
   // Biller

@@ -30,4 +30,8 @@ urlpatterns = [
     # Admin — table management
     path('admin/tables/',                views.TableAdminListCreateView.as_view(), name='admin-table-list'),
     path('admin/tables/<int:table_id>/', views.TableAdminDetailView.as_view(),    name='admin-table-detail'),
+
+    # Admin — kitchen station management
+    path('admin/kitchens/',                    views.KitchenAdminListCreateView.as_view(), name='admin-kitchen-list'),
+    path('admin/kitchens/<int:kitchen_id>/',   views.KitchenAdminDetailView.as_view(),    name='admin-kitchen-detail'),
 ]

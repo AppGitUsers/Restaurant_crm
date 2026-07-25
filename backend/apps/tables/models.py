@@ -2,6 +2,16 @@ import uuid
 from django.db import models
 
 
+class Kitchen(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
 class Table(models.Model):
     number               = models.PositiveIntegerField(unique=True)
     qr_token             = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
@@ -100,6 +110,11 @@ class TableOrderBatch(models.Model):
 
 
 class TableOrderItem(models.Model):
+    class ItemStatus(models.TextChoices):
+        PENDING   = 'PENDING',   'Pending'
+        PREPARING = 'PREPARING', 'Preparing'
+        SERVED    = 'SERVED',    'Served'
+
     batch                = models.ForeignKey(TableOrderBatch, on_delete=models.CASCADE, related_name='items')
     food_item            = models.ForeignKey('menu.FoodItem', on_delete=models.PROTECT, related_name='table_order_items', null=True, blank=True)
     custom_name          = models.CharField(max_length=200, blank=True)
@@ -109,6 +124,7 @@ class TableOrderItem(models.Model):
     notes                = models.TextField(blank=True)
     cancelled_by_kitchen = models.BooleanField(default=False)
     cancelled_at         = models.DateTimeField(null=True, blank=True)
+    status               = models.CharField(max_length=10, choices=ItemStatus.choices, default=ItemStatus.PENDING, db_index=True)
 
     @property
     def line_total(self):

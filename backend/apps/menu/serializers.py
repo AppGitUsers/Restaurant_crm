@@ -10,16 +10,21 @@ class AddonSerializer(serializers.ModelSerializer):
 
 
 class FoodTypeSerializer(serializers.ModelSerializer):
-    item_count = serializers.SerializerMethodField()
-    addons     = AddonSerializer(many=True, read_only=True)
-    addon_ids  = serializers.ListField(
+    item_count   = serializers.SerializerMethodField()
+    addons       = AddonSerializer(many=True, read_only=True)
+    addon_ids    = serializers.ListField(
         child=serializers.IntegerField(), write_only=True, required=False
     )
+    kitchen_name = serializers.SerializerMethodField()
 
     class Meta:
         model  = FoodType
         fields = ['id', 'name', 'description', 'icon', 'sort_order', 'is_active',
-                  'allow_addons', 'addons', 'addon_ids', 'is_customizable', 'item_count', 'created_at']
+                  'allow_addons', 'addons', 'addon_ids', 'is_customizable',
+                  'kitchen', 'kitchen_name', 'item_count', 'created_at']
+
+    def get_kitchen_name(self, obj):
+        return obj.kitchen.name if obj.kitchen_id else None
 
     def get_item_count(self, obj):
         return obj.items.filter(is_active=True).count()

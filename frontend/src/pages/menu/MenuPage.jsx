@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { menuAPI } from '@/api'
+import { menuAPI, tablesAPI } from '@/api'
 import { PageLoader, Modal, SearchBar, StatusBadge, ConfirmDialog, Field, Empty } from '@/components/ui'
 import toast from 'react-hot-toast'
 import { Plus, Edit2, Trash2, ChefHat, UtensilsCrossed, Layers, Sparkles, Wand2, Check } from 'lucide-react'
@@ -10,11 +10,12 @@ function FoodTypeTab() {
   const qc = useQueryClient()
   const [modal, setModal] = useState(null)
   const [sel, setSel]     = useState(null)
-  const [form, setForm]   = useState({ name: '', description: '', icon: '', sort_order: 0, allow_addons: false, addon_ids: [], is_customizable: false })
+  const [form, setForm]   = useState({ name: '', description: '', icon: '', sort_order: 0, allow_addons: false, addon_ids: [], is_customizable: false, kitchen: '' })
   const [del, setDel]     = useState(null)
 
   const { data, isLoading } = useQuery({ queryKey: ['food-types'], queryFn: () => menuAPI.types.list().then(r => r.data.results || r.data) })
   const { data: allAddons } = useQuery({ queryKey: ['addons'], queryFn: () => menuAPI.addons.list({ is_active: true }).then(r => r.data.results || r.data) })
+  const { data: kitchens }  = useQuery({ queryKey: ['kitchens-list'], queryFn: () => tablesAPI.admin.kitchens.list().then(r => r.data) })
 
   const save = useMutation({
     mutationFn: (d) => sel ? menuAPI.types.update(sel.id, d) : menuAPI.types.create(d),
@@ -26,7 +27,7 @@ function FoodTypeTab() {
     onSuccess: () => { qc.invalidateQueries(['food-types']); setDel(null); toast.success('Deleted') },
   })
 
-  const blankForm = { name: '', description: '', icon: '', sort_order: 0, allow_addons: false, addon_ids: [], is_customizable: false }
+  const blankForm = { name: '', description: '', icon: '', sort_order: 0, allow_addons: false, addon_ids: [], is_customizable: false, kitchen: '' }
   const openCreate = () => { setSel(null); setForm(blankForm); setModal('form') }
   const openEdit   = (t)  => {
     setSel(t)
@@ -35,6 +36,7 @@ function FoodTypeTab() {
       allow_addons:    t.allow_addons    || false,
       addon_ids:       (t.addons || []).map(a => a.id),
       is_customizable: t.is_customizable || false,
+      kitchen:         t.kitchen || '',
     })
     setModal('form')
   }
@@ -78,6 +80,11 @@ function FoodTypeTab() {
                 ✦ Customizable
               </span>
             )}
+            {t.kitchen_name && (
+              <span className="inline-flex items-center gap-1 text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full w-fit">
+                <ChefHat size={9} /> {t.kitchen_name}
+              </span>
+            )}
             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <button onClick={() => openEdit(t)} className="btn-ghost py-1 px-2 text-xs"><Edit2 size={12} />Edit</button>
               <button onClick={() => setDel(t)} className="btn-ghost py-1 px-2 text-xs text-red-500"><Trash2 size={12} /></button>
@@ -90,7 +97,7 @@ function FoodTypeTab() {
       <Modal open={modal === 'form'} onClose={() => setModal(null)} title={sel ? 'Edit Food Type' : 'Add Food Type'}
         footer={<>
           <button onClick={() => setModal(null)} className="btn-ghost">Cancel</button>
-          <button onClick={() => save.mutate(form)} disabled={save.isPending} className="btn-primary">Save</button>
+          <button onClick={() => save.mutate({ ...form, kitchen: form.kitchen || null })} disabled={save.isPending} className="btn-primary">Save</button>
         </>}
       >
         <Field label="Name" required><input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></Field>
@@ -122,6 +129,14 @@ function FoodTypeTab() {
             </div>
             <span className="text-sm text-gray-600">{form.is_customizable ? 'Yes — available in custom combos' : 'Not customizable'}</span>
           </label>
+        </Field>
+
+        {/* Kitchen assignment */}
+        <Field label="Assign to Kitchen (optional)">
+          <select className="select" value={form.kitchen} onChange={e => setForm({ ...form, kitchen: e.target.value })}>
+            <option value="">— No kitchen (visible to all) —</option>
+            {(kitchens || []).map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
+          </select>
         </Field>
 
         {/* Addon checklist — only shown when allow_addons */}

@@ -285,6 +285,15 @@ function KitchenItem({ item, qtyClass, onCancel, onReduce }) {
   )
 }
 
+// Derive card status from visible items (not global batch status) so per-kitchen views are correct
+function localBatchStatus(items) {
+  const active = items.filter(i => !i.cancelled_by_kitchen)
+  if (active.length === 0) return null
+  if (active.every(i => i.status === 'PENDING'))   return 'PENDING'
+  if (active.every(i => i.status === 'SERVED'))    return 'SERVED'
+  return 'PREPARING'
+}
+
 // ── Active orders ─────────────────────────────────────────────────────────────
 function ActiveOrders({ batches, pendingCount, preparingCount, advance, onCancelItem, onReduceItem }) {
   const activeBatches = batches.filter(b => b.items.some(i => !i.cancelled_by_kitchen))
@@ -327,12 +336,13 @@ function ActiveOrders({ batches, pendingCount, preparingCount, advance, onCancel
       {/* Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
         {batches.map(batch => {
-          const meta        = STATUS[batch.status]
-          const isPending   = batch.status === 'PENDING'
-          const isWorking   = advance.isPending && advance.variables?.id === batch.id
-          const nextStatus  = isPending ? 'PREPARING' : 'SERVED'
           const activeItems = batch.items.filter(i => !i.cancelled_by_kitchen)
           if (activeItems.length === 0) return null
+          const cardStatus  = localBatchStatus(batch.items) || 'PENDING'
+          const meta        = STATUS[cardStatus] || STATUS.PENDING
+          const isPending   = cardStatus === 'PENDING'
+          const isWorking   = advance.isPending && advance.variables?.id === batch.id
+          const nextStatus  = isPending ? 'PREPARING' : 'SERVED'
 
           return (
             <div key={batch.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">

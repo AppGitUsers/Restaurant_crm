@@ -18,6 +18,12 @@ class CustomUser(AbstractUser):
         null=True, blank=True,
         related_name='user_account',
     )
+    kitchen = models.ForeignKey(
+        'tables.Kitchen',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='users',
+    )
 
     def save(self, *args, **kwargs):
         if self.is_superuser:

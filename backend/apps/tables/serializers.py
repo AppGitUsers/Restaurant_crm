@@ -1,6 +1,12 @@
 from rest_framework import serializers
 from apps.menu.models import FoodItem
-from .models import Table, TableSession, TableOrderBatch, TableOrderItem
+from .models import Kitchen, Table, TableSession, TableOrderBatch, TableOrderItem
+
+
+class KitchenSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = Kitchen
+        fields = ['id', 'name']
 
 
 class TableAdminSerializer(serializers.ModelSerializer):
@@ -99,7 +105,7 @@ class TableOrderItemSerializer(serializers.ModelSerializer):
         model  = TableOrderItem
         fields = ['id', 'food_item', 'food_item_name', 'custom_name', 'quantity',
                   'unit_price', 'addon_unit_price', 'line_total', 'notes',
-                  'cancelled_by_kitchen', 'cancelled_at']
+                  'cancelled_by_kitchen', 'cancelled_at', 'status']
 
     def get_food_item_name(self, obj):
         return obj.food_item.name if obj.food_item_id else (obj.custom_name or 'Custom Item')
