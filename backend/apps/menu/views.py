@@ -3,7 +3,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from apps.accounts.permissions import IsAdmin, IsAdminOrBiller
+from apps.accounts.permissions import IsAdmin, IsAdminOrManager, IsAdminOrBiller
 from .models import FoodType, FoodItem, Ingredient, RecipeIngredient, Addon, ComboComponent
 from .serializers import (FoodTypeSerializer, FoodItemSerializer,
                            FoodItemWriteSerializer, IngredientSerializer,
@@ -21,7 +21,7 @@ class AddonViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
             return [IsAdminOrBiller()]
-        return [IsAdmin()]
+        return [IsAdminOrManager()]
 
     def perform_create(self, serializer):
         addon = serializer.save()
@@ -46,7 +46,7 @@ class FoodTypeViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
             return [IsAdminOrBiller()]
-        return [IsAdmin()]
+        return [IsAdminOrManager()]
 
     def perform_create(self, serializer):
         ft = serializer.save()
@@ -65,7 +65,7 @@ class FoodTypeViewSet(viewsets.ModelViewSet):
 class IngredientViewSet(viewsets.ModelViewSet):
     queryset           = Ingredient.objects.select_related('stock').all()
     serializer_class   = IngredientSerializer
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrManager]
     filterset_fields   = ['is_active', 'unit']
     search_fields      = ['name']
 
@@ -102,7 +102,7 @@ class FoodItemViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
             return [IsAdminOrBiller()]
-        return [IsAdmin()]
+        return [IsAdminOrManager()]
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -131,7 +131,7 @@ class FoodItemViewSet(viewsets.ModelViewSet):
         logger.info("FoodItem deleted: admin=%s item=%s", self.request.user, instance.name)
         instance.delete()
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrManager])
     def set_recipe(self, request, pk=None):
         """Set/replace full recipe for a food item. Body: {ingredients:[{ingredient,quantity_required}]}"""
         food_item   = self.get_object()
@@ -164,7 +164,7 @@ class FoodItemViewSet(viewsets.ModelViewSet):
         ris = food_item.recipe_ingredients.select_related('ingredient__stock').all()
         return Response(RecipeIngredientSerializer(ris, many=True).data)
 
-    @action(detail=False, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=False, methods=['post'], permission_classes=[IsAdminOrManager])
     def recalculate_all(self, request):
         count = 0
         for item in FoodItem.objects.filter(is_active=True, is_combo=False):
@@ -176,7 +176,7 @@ class FoodItemViewSet(viewsets.ModelViewSet):
         logger.info("Makeable counts recalculated: admin=%s items=%d", request.user, count)
         return Response({'detail': 'All makeable counts recalculated.'})
 
-    @action(detail=False, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=False, methods=['post'], permission_classes=[IsAdminOrManager])
     def create_combo(self, request):
         """Create a pre-defined combo item from customizable category items."""
         name          = (request.data.get('name') or '').strip()
@@ -218,7 +218,7 @@ class FoodItemViewSet(viewsets.ModelViewSet):
                     request.user, name, len(component_ids), price)
         return Response(FoodItemSerializer(food_item, context={'request': request}).data, status=201)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrManager])
     def set_combo_components(self, request, pk=None):
         """Replace components for an existing combo item."""
         food_item     = self.get_object()

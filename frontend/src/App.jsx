@@ -34,6 +34,7 @@ import QROrderPage  from '@/pages/order/QROrderPage'
 import ReceiptPage  from '@/pages/public/ReceiptPage'
 
 const roleHome = role => {
+  if (role === 'MANAGER') return '/dashboard'
   if (role === 'BILLER')  return '/billing'
   if (role === 'KITCHEN') return '/kitchen'
   return '/dashboard'
@@ -58,9 +59,9 @@ export default function App() {
       <Route path="/biller-login"   element={<BillerLogin />} />
       <Route path="/kitchen-login"  element={<KitchenLogin />} />
 
-      {/* Admin routes */}
+      {/* Admin + Manager routes */}
       <Route path="/" element={
-        <RequireAuth allowedRoles={['ADMIN']}>
+        <RequireAuth allowedRoles={['ADMIN', 'MANAGER']}>
           <AdminLayout />
         </RequireAuth>
       }>
@@ -69,24 +70,42 @@ export default function App() {
         <Route path="menu"           element={<MenuPage />} />
         <Route path="inventory"      element={<InventoryPage />} />
         <Route path="billing-admin"  element={<BillingPage />} />
-        <Route path="finance"        element={<FinancePage />} />
-        <Route path="staff"          element={<StaffPage />} />
         <Route path="customers"      element={<CustomersPage />} />
-        <Route path="tables-admin"   element={<AdminTablesPage />} />
         <Route path="today-orders"   element={<TodayOrdersPage />} />
-        <Route path="settings"       element={<SettingsPage />} />
+
+        {/* Admin-only sub-routes */}
+        <Route path="finance" element={
+          <RequireAuth allowedRoles={['ADMIN']}>
+            <FinancePage />
+          </RequireAuth>
+        } />
+        <Route path="staff" element={
+          <RequireAuth allowedRoles={['ADMIN']}>
+            <StaffPage />
+          </RequireAuth>
+        } />
+        <Route path="tables-admin" element={
+          <RequireAuth allowedRoles={['ADMIN']}>
+            <AdminTablesPage />
+          </RequireAuth>
+        } />
+        <Route path="settings" element={
+          <RequireAuth allowedRoles={['ADMIN']}>
+            <SettingsPage />
+          </RequireAuth>
+        } />
       </Route>
 
-      {/* Kiosk — full-screen, no sidebar, accessible by both roles */}
+      {/* Kiosk — full-screen, no sidebar */}
       <Route path="/kiosk" element={
-        <RequireAuth allowedRoles={['ADMIN', 'BILLER']}>
+        <RequireAuth allowedRoles={['ADMIN', 'MANAGER', 'BILLER']}>
           <AttendanceKiosk />
         </RequireAuth>
       } />
 
       {/* Biller routes */}
       <Route path="/billing" element={
-        <RequireAuth allowedRoles={['ADMIN', 'BILLER']}>
+        <RequireAuth allowedRoles={['ADMIN', 'MANAGER', 'BILLER']}>
           <BillerLayout />
         </RequireAuth>
       }>
@@ -102,7 +121,7 @@ export default function App() {
 
       {/* Kitchen routes */}
       <Route path="/kitchen" element={
-        <RequireAuth allowedRoles={['ADMIN', 'BILLER', 'KITCHEN']}>
+        <RequireAuth allowedRoles={['ADMIN', 'MANAGER', 'BILLER', 'KITCHEN']}>
           <KitchenLayout />
         </RequireAuth>
       }>

@@ -8,7 +8,7 @@ from django.db.models.functions import TruncDate, TruncMonth
 from django.utils import timezone
 import datetime
 
-from apps.accounts.permissions import IsAdmin
+from apps.accounts.permissions import IsAdmin, IsAdminOrManager
 from .models import Transaction, Expense, DailyReport
 from .serializers import TransactionSerializer, ExpenseSerializer, DailyReportSerializer
 
@@ -112,7 +112,7 @@ class DailyReportViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class FinanceSummaryView(APIView):
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrManager]
 
     def get(self, request):
         today       = timezone.now().date()

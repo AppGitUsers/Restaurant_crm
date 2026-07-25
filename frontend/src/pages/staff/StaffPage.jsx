@@ -965,7 +965,7 @@ function CredentialsTab() {
 
   const { data: allUsers, isLoading } = useQuery({ queryKey: ['staff-users'], queryFn: () => authAPI.users.list().then(r => r.data.results || r.data) })
   const { data: emps }                = useQuery({ queryKey: ['employees'], queryFn: () => staffAPI.employees.list().then(r => r.data.results || r.data) })
-  const staffUsers = (allUsers || []).filter(u => u.role === 'BILLER' || u.role === 'KITCHEN')
+  const staffUsers = (allUsers || []).filter(u => u.role === 'BILLER' || u.role === 'KITCHEN' || u.role === 'MANAGER')
 
   const save = useMutation({
     mutationFn: d => sel ? authAPI.users.update(sel.id, d) : authAPI.users.create(d),
@@ -1003,7 +1003,7 @@ function CredentialsTab() {
             {staffUsers.map(u => (
               <tr key={u.id}>
                 <td className="font-medium font-mono">{u.username}</td>
-                <td><span className={u.role === 'KITCHEN' ? 'badge-gold text-xs' : 'badge-blue text-xs'}>{u.role}</span></td>
+                <td><span className={u.role === 'KITCHEN' ? 'badge-gold text-xs' : u.role === 'MANAGER' ? 'badge-purple text-xs' : 'badge-blue text-xs'}>{u.role}</span></td>
                 <td>{u.linked_employee_name || <span className="text-gray-300">—</span>}</td>
                 <td><span className={u.is_active ? 'badge-green' : 'badge-red'}>{u.is_active ? 'Active' : 'Disabled'}</span></td>
                 <td>
@@ -1030,7 +1030,7 @@ function CredentialsTab() {
                 {u.linked_employee_name && <p className="text-xs text-gray-400 mt-0.5">{u.linked_employee_name}</p>}
               </div>
               <div className="flex gap-1.5 items-center flex-shrink-0">
-                <span className={u.role === 'KITCHEN' ? 'badge-gold text-xs' : 'badge-blue text-xs'}>{u.role}</span>
+                <span className={u.role === 'KITCHEN' ? 'badge-gold text-xs' : u.role === 'MANAGER' ? 'badge-purple text-xs' : 'badge-blue text-xs'}>{u.role}</span>
                 <span className={u.is_active ? 'badge-green text-xs' : 'badge-red text-xs'}>{u.is_active ? 'Active' : 'Disabled'}</span>
               </div>
             </div>
@@ -1057,6 +1057,7 @@ function CredentialsTab() {
           <Field label="Role">
             <select className="select" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
               <option value="BILLER">Biller</option>
+              <option value="MANAGER">Manager</option>
               <option value="KITCHEN">Kitchen</option>
             </select>
           </Field>

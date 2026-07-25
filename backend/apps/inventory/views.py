@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from apps.accounts.permissions import IsAdmin, IsAdminOrBiller
+from apps.accounts.permissions import IsAdmin, IsAdminOrManager, IsAdminOrBiller
 from .models import (Vendor, Stock, VendorInvoice, InvoicePayment, StockTransaction,
                      PackagingItem, FoodTypePackaging, RawMaterial)
 from .serializers import (VendorSerializer, StockSerializer, VendorInvoiceSerializer,
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class VendorViewSet(viewsets.ModelViewSet):
     queryset           = Vendor.objects.all()
     serializer_class   = VendorSerializer
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrManager]
     filterset_fields   = ['is_active']
     search_fields      = ['name', 'contact_name', 'phone', 'email']
     ordering_fields    = ['name', 'created_at']
@@ -40,7 +40,7 @@ class VendorViewSet(viewsets.ModelViewSet):
 class StockViewSet(viewsets.ModelViewSet):
     queryset           = Stock.objects.select_related('ingredient').all()
     serializer_class   = StockSerializer
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrManager]
     search_fields      = ['ingredient__name']
     ordering_fields    = ['ingredient__name', 'current_quantity']
 
@@ -91,7 +91,7 @@ class VendorInvoiceViewSet(viewsets.ModelViewSet):
                 .prefetch_related('items__ingredient', 'items__packaging_item',
                                   'items__raw_material', 'payments')
                 .all())
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrManager]
     filterset_fields   = ['status', 'vendor', 'stock_updated']
     search_fields      = ['invoice_number', 'vendor__name']
     ordering_fields    = ['invoice_date', 'total_amount', 'created_at']
@@ -153,7 +153,7 @@ class StockTransactionViewSet(viewsets.ReadOnlyModelViewSet):
                 .select_related('ingredient')
                 .order_by('-created_at'))
     serializer_class   = StockTransactionSerializer
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrManager]
     filterset_fields   = ['tx_type', 'ingredient']
     search_fields      = ['ingredient__name', 'reference', 'note']
 
@@ -161,7 +161,7 @@ class StockTransactionViewSet(viewsets.ReadOnlyModelViewSet):
 class PackagingItemViewSet(viewsets.ModelViewSet):
     queryset           = PackagingItem.objects.all()
     serializer_class   = PackagingItemSerializer
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrManager]
     search_fields      = ['name']
     ordering_fields    = ['name', 'current_quantity']
 
@@ -210,7 +210,7 @@ class PackagingItemViewSet(viewsets.ModelViewSet):
 class RawMaterialViewSet(viewsets.ModelViewSet):
     queryset           = RawMaterial.objects.all()
     serializer_class   = RawMaterialSerializer
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrManager]
     search_fields      = ['name']
     ordering_fields    = ['name', 'current_quantity']
 
@@ -261,7 +261,7 @@ class FoodTypePackagingViewSet(viewsets.ModelViewSet):
                 .select_related('food_type', 'packaging_item')
                 .all())
     serializer_class   = FoodTypePackagingSerializer
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrManager]
     filterset_fields   = ['food_type', 'order_type']
 
     def perform_create(self, serializer):

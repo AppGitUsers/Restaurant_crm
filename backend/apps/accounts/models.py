@@ -5,6 +5,7 @@ from django.db import models
 class CustomUser(AbstractUser):
     class Role(models.TextChoices):
         ADMIN   = 'ADMIN',   'Admin'
+        MANAGER = 'MANAGER', 'Manager'
         BILLER  = 'BILLER',  'Biller'
         KITCHEN = 'KITCHEN', 'Kitchen'
 
@@ -25,6 +26,9 @@ class CustomUser(AbstractUser):
 
     def is_admin_user(self):
         return self.role == self.Role.ADMIN
+
+    def is_manager_user(self):
+        return self.role == self.Role.MANAGER
 
     def is_biller_user(self):
         return self.role == self.Role.BILLER

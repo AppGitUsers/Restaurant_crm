@@ -4,21 +4,27 @@ import {
   TrendingUp, Users, UserCog, ChevronRight, Settings, X, TableProperties, ClipboardList,
 } from 'lucide-react'
 import clsx from 'clsx'
+import { useAuthStore } from '@/store/authStore'
 
 const NAV = [
-  { to: '/dashboard',     icon: LayoutDashboard,  label: 'Dashboard'  },
-  { to: '/menu',          icon: UtensilsCrossed,  label: 'Menu'        },
-  { to: '/inventory',     icon: Package,          label: 'Inventory'  },
-  { to: '/billing-admin', icon: Receipt,          label: 'Billing'    },
-  { to: '/tables-admin',  icon: TableProperties,  label: 'Tables'     },
-  { to: '/today-orders',  icon: ClipboardList,    label: "Today's Orders" },
-  { to: '/finance',       icon: TrendingUp,       label: 'Finance'    },
-  { to: '/staff',         icon: UserCog,          label: 'Staff'      },
-  { to: '/customers',     icon: Users,            label: 'Customers'  },
-  { to: '/settings',      icon: Settings,         label: 'Settings'   },
+  { to: '/dashboard',     icon: LayoutDashboard,  label: 'Dashboard',         roles: ['ADMIN', 'MANAGER'] },
+  { to: '/menu',          icon: UtensilsCrossed,  label: 'Menu',              roles: ['ADMIN', 'MANAGER'] },
+  { to: '/inventory',     icon: Package,          label: 'Inventory',         roles: ['ADMIN', 'MANAGER'] },
+  { to: '/billing-admin', icon: Receipt,          label: 'Billing',           roles: ['ADMIN', 'MANAGER'] },
+  { to: '/tables-admin',  icon: TableProperties,  label: 'Tables',            roles: ['ADMIN'] },
+  { to: '/today-orders',  icon: ClipboardList,    label: "Today's Orders",    roles: ['ADMIN', 'MANAGER'] },
+  { to: '/finance',       icon: TrendingUp,       label: 'Finance',           roles: ['ADMIN'] },
+  { to: '/staff',         icon: UserCog,          label: 'Staff',             roles: ['ADMIN'] },
+  { to: '/customers',     icon: Users,            label: 'Customers',         roles: ['ADMIN', 'MANAGER'] },
+  { to: '/settings',      icon: Settings,         label: 'Settings',          roles: ['ADMIN'] },
 ]
 
 export default function Sidebar({ open, onClose }) {
+  const { user } = useAuthStore()
+  const role = user?.role
+
+  const visibleNav = NAV.filter(item => item.roles.includes(role))
+
   return (
     <aside className={clsx(
       'fixed inset-y-0 left-0 z-40 w-56 flex-shrink-0 bg-primary-700 flex flex-col',
@@ -50,7 +56,7 @@ export default function Sidebar({ open, onClose }) {
         <p className="text-primary-300 text-xs font-semibold uppercase tracking-wider px-2 mb-3">
           Main Menu
         </p>
-        {NAV.map(({ to, icon: Icon, label }) => (
+        {visibleNav.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}

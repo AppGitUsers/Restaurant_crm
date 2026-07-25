@@ -123,6 +123,9 @@
   .badge-blue {
     @apply badge bg-blue-50 text-blue-600;
   }
+  .badge-purple {
+    @apply badge bg-purple-50 text-purple-600;
+  }
 
   /* KPI cards */
   .kpi-card {

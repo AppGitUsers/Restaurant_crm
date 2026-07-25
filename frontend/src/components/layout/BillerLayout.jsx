@@ -16,7 +16,7 @@ export default function BillerLayout() {
   const doLogout = async () => {
     try { await authAPI.logout(refreshToken) } catch {}
     logout()
-    navigate('/biller-login')
+    navigate(user?.role === 'MANAGER' ? '/login' : '/biller-login')
     toast.success('Logged out')
   }
 

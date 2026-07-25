@@ -16,8 +16,9 @@ export const useAuthStore = create(
       logout: () =>
         set({ token: null, refreshToken: null, user: null }),
 
-      isAdmin:  () => get().user?.role === 'ADMIN',
-      isBiller: () => get().user?.role === 'BILLER',
+      isAdmin:   () => get().user?.role === 'ADMIN',
+      isManager: () => get().user?.role === 'MANAGER',
+      isBiller:  () => get().user?.role === 'BILLER',
     }),
     {
       name: 'restaurant-crm-auth',
