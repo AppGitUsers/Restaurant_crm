@@ -92,8 +92,15 @@ class FoodItem(models.Model):
                 self.makeable_count = 0
                 self.save(update_fields=['makeable_count'])
                 return
-            counts = list(FoodItem.objects.filter(id__in=comp_ids).values_list('makeable_count', flat=True))
-            self.makeable_count = min(counts) if counts else 0
+            components = list(FoodItem.objects.filter(id__in=comp_ids))
+            # Any unavailable component makes the combo unavailable
+            if any(not c.is_available for c in components):
+                self.makeable_count = 0
+                self.save(update_fields=['makeable_count'])
+                return
+            # Only stock-tracked components constrain the count
+            tracked_counts = [c.makeable_count for c in components if c.tracks_stock]
+            self.makeable_count = min(tracked_counts) if tracked_counts else 999
             self.save(update_fields=['makeable_count'])
             return
 
